@@ -20,8 +20,48 @@
     solve: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8 6.5h8M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5v3M8.5 18h.01M12 18h.01"/></svg>',
     menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     theme: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>',
+    explain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7"/><path d="M12 17h.01"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   };
-  const TABS = [['learn', 'Learn'], ['examples', 'Examples'], ['practice', 'Practice'], ['solve', 'Solver']];
+  const TABS = [['learn', 'Learn'], ['explain', 'In depth'], ['examples', 'Examples'], ['practice', 'Practice'], ['solve', 'Solver']];
+
+  /* ---------- search: topics, In depth questions and examples ---------- */
+  let INDEX = null;
+  function buildIndex() {
+    INDEX = [];
+    NM.topics.forEach((t) => {
+      const words = [t.title, t.short, UI.plain(t.tagline), t.book].concat((t.lessons || []).map((l) => UI.plain(l.title))).join(' ');
+      INDEX.push({ kind: 'Topic', label: t.title, sub: t.book, href: '#/t/' + t.id + '/learn', text: words.toLowerCase() });
+      (NM.EXPLAIN[t.id] || []).forEach((it, k) => INDEX.push({ kind: 'In depth', label: UI.plain(it.q), sub: t.title, href: '#/t/' + t.id + '/explain', open: 'q-' + t.id + '-' + (k + 1), text: (UI.plain(it.q) + ' ' + t.title + ' ' + t.short).toLowerCase() }));
+      (t.examples || []).forEach((ex) => INDEX.push({ kind: 'Example', label: UI.plain(ex.title), sub: t.title + (ex.src ? ' · ' + ex.src : ''), href: '#/t/' + t.id + '/examples', text: (UI.plain(ex.title) + ' ' + (ex.src || '') + ' ' + t.title).toLowerCase() }));
+    });
+    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
+  }
+  function searchBox() {
+    const input = h('input', { type: 'search', id: 'site-search', placeholder: 'Search topics and questions', autocomplete: 'off', 'aria-label': 'Search topics and questions' });
+    const out = h('div', { class: 'search-results', role: 'listbox', hidden: true });
+    const go = (r) => {
+      input.value = ''; out.hidden = true;
+      NM.navigate(r.href);
+      if (r.open) { const d = document.getElementById(r.open); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); window.scrollBy(0, -80); } }
+    };
+    input.addEventListener('input', () => {
+      if (!INDEX) buildIndex();
+      const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      out.innerHTML = '';
+      if (!words.length) { out.hidden = true; return; }
+      const hits = INDEX.filter((r) => words.every((w) => r.text.includes(w))).slice(0, 8);
+      out.hidden = false;
+      if (!hits.length) { out.appendChild(h('div', { class: 'search-empty', text: 'Nothing found. Try a method name, like "simpson" or "tangent".' })); return; }
+      hits.forEach((r) => out.appendChild(h('button', { type: 'button', class: 'search-hit', role: 'option', onclick: () => go(r) },
+        h('span', { class: 'search-kind', text: r.kind }), h('span', { class: 'search-label', text: r.label }), r.sub ? h('span', { class: 'search-sub', text: r.sub }) : null)));
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { const first = out.querySelector('.search-hit'); if (first) first.click(); }
+      if (e.key === 'Escape') { input.value = ''; out.hidden = true; }
+    });
+    return h('div', { class: 'search' }, input, out);
+  }
 
   let side, content, crumbs;
 
@@ -83,9 +123,14 @@
 
   function layout() {
     const brand = h('a', { class: 'brand', href: '#/' }, h('span', { class: 'brand-mark', text: 'ƒ' }), h('span', null, h('b', { text: 'Numerical Methods' }), h('span', { text: 'Reviewer · works offline' })));
-    side = h('aside', { class: 'side' }, brand, h('nav'));
+    side = h('aside', { class: 'side' }, brand, searchBox(), h('nav'));
     const menuBtn = h('button', { class: 'btn icon ghost menu-btn', type: 'button', 'aria-label': 'Open the topic list', html: ICON.menu });
     menuBtn.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+    const findBtn = h('button', { class: 'btn icon ghost menu-btn', type: 'button', 'aria-label': 'Search', html: ICON.search });
+    findBtn.addEventListener('click', () => { document.body.classList.add('nav-open'); setTimeout(() => document.getElementById('site-search').focus(), 60); });
+    const skip = h('a', { class: 'skip', href: '#content' }, 'Skip to content');
+    skip.addEventListener('click', (e) => { e.preventDefault(); content.focus(); });
+    document.body.appendChild(skip);
     crumbs = h('div', { class: 'crumbs' });
     const sizeBtn = h('button', { class: 'btn icon ghost', type: 'button', title: 'Text size', 'aria-label': 'Change text size', style: { fontWeight: '800' } }, 'Aa');
     sizeBtn.addEventListener('click', () => {
@@ -103,7 +148,7 @@
       UI.toast('Theme: ' + { light: 'light', dark: 'dark', auto: 'match my device' }[UI.settings.theme]);
       route();
     });
-    const top = h('header', { class: 'topbar' }, menuBtn, crumbs, sizeBtn, themeBtn);
+    const top = h('header', { class: 'topbar' }, menuBtn, crumbs, findBtn, sizeBtn, themeBtn);
     content = h('main', { class: 'content', id: 'content', tabindex: '-1' });
     const scrim = h('div', { class: 'scrim' });
     scrim.addEventListener('click', () => document.body.classList.remove('nav-open'));
@@ -132,6 +177,7 @@
       t.solve(body);
     } else if (tab === 'practice') UI.practice(body, t);
     else if (tab === 'examples') UI.examples(body, t);
+    else if (tab === 'explain') UI.faq(body, NM.EXPLAIN[t.id] || [], t.id);
     else UI.lessons(body, t);
     el.appendChild(h('div', { class: 'row spread', style: { marginTop: '28px' } },
       prev ? h('a', { class: 'btn ghost', href: '#/t/' + prev.id + '/learn' }, '← ' + prev.title) : h('span'),
@@ -147,6 +193,9 @@
     const sameRoute = route._last === hash;
     route._last = hash;
     content.innerHTML = '';
+    // soft fade-in for a new page (skipped when re-rendering the same page)
+    content.classList.remove('enter');
+    if (!sameRoute) { void content.offsetWidth; content.classList.add('enter'); }
     document.body.classList.remove('nav-open');
     try {
       if (parts[0] === 't' && NM.topic(parts[1])) {

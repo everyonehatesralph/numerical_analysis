@@ -19,8 +19,10 @@
       h('p', { class: 'muted', style: { margin: 0 }, html: cur.tagline }),
       h('div', { class: 'row', style: { marginTop: '6px' } },
         h('a', { class: 'btn primary', href: '#/t/' + cur.id + '/' + next[0] }, next[1] + ' →'),
-        h('a', { class: 'btn', href: '#/t/' + cur.id + '/examples' }, 'Examples'),
-        h('a', { class: 'btn', href: '#/t/' + cur.id + '/practice' }, 'Practice'))));
+        // the two other sections that aren't the main button, so nothing is offered twice
+        [['learn', 'Lesson'], ['explain', 'In depth'], ['examples', 'Examples'], ['practice', 'Practice']]
+          .filter(([k]) => k !== next[0]).slice(next[0] === 'learn' ? 0 : 1, next[0] === 'learn' ? 2 : 3)
+          .map(([k, label]) => h('a', { class: 'btn', href: '#/t/' + cur.id + '/' + k }, label)))));
     el.appendChild(h('div', { class: 'card' },
       h('h2', { text: 'Today: 45 minutes' }),
       h('ol', { class: 'today' },

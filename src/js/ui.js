@@ -187,9 +187,12 @@
     wrap.append(ctrl);
     parent.appendChild(wrap);
     let shown = opt.reveal === 'all' ? steps.length : opt.reveal === 'none' ? 0 : 1;
+    let onScreen = 0;
     const render = (scroll) => {
-      ol.innerHTML = '';
-      nodes.slice(0, shown).forEach((n) => ol.appendChild(n));
+      // add only the newly revealed steps (staggered), so earlier ones don't replay their entrance
+      if (shown < onScreen) nodes.slice(shown, onScreen).forEach((n) => n.remove());
+      else nodes.slice(onScreen, shown).forEach((n, j) => { n.style.setProperty('--i', Math.min(j, 12)); ol.appendChild(n); });
+      onScreen = shown;
       if (answer) answer.hidden = shown < steps.length;
       ctrl.innerHTML = '';
       if (shown === 0) {
@@ -223,6 +226,37 @@
     return d;
   };
 
+  /* ---------- In depth tab: questions that open one at a time ----------
+     items = [{ q, a (html), live? }] — live answers compute their numbers when opened */
+  UI.faq = (parent, items, topicId) => {
+    const list = h('div', { class: 'faq' });
+    const all = items.map((it, k) => {
+      const body = h('div', { class: 'faq-body' });
+      const d = h('details', { class: 'faq-item', id: 'q-' + topicId + '-' + (k + 1) },
+        h('summary', null, h('span', { class: 'faq-n', text: String(k + 1) }), h('span', { class: 'faq-q', html: it.q }), h('span', { class: 'faq-icon', 'aria-hidden': 'true' })),
+        body);
+      let filled = false;
+      d.addEventListener('toggle', () => {
+        if (!d.open || filled) return;
+        filled = true;
+        body.innerHTML = it.a;
+        if (it.live && NM.EXPLAIN_LIVE && NM.EXPLAIN_LIVE[it.live]) NM.EXPLAIN_LIVE[it.live](body);
+      });
+      list.appendChild(d);
+      return d;
+    });
+    const toggleAll = h('button', { class: 'btn sm', type: 'button' }, 'Open all');
+    toggleAll.addEventListener('click', () => {
+      const open = !all.every((d) => d.open);
+      all.forEach((d) => { d.open = open; });
+      toggleAll.textContent = open ? 'Close all' : 'Open all';
+    });
+    parent.appendChild(h('div', { class: 'row spread', style: { marginBottom: '6px' } },
+      h('p', { class: 'muted', style: { margin: 0 }, html: 'Each answer explains <b>why</b> a step works. Read them in order the first time.' }), toggleAll));
+    parent.appendChild(list);
+    return all;
+  };
+
   /* ---------- Learn tab: short lesson pages, one at a time ----------
      topic.lessons = [{ title, build(el) }] */
   UI.lessons = (parent, topic) => {
@@ -236,10 +270,11 @@
       Store.set(key, i);
       if (i === L.length - 1 && !Prog.get(topic.id).walked) Prog.patch(topic.id, () => ({ walked: true }));
       box.innerHTML = '';
+      // each bar sits in a 44px-tall button so it is easy to tap
       const dots = h('div', { class: 'dots', role: 'tablist', 'aria-label': 'Lesson pages' }, L.map((l, k) =>
-        h('button', { type: 'button', class: k === i ? 'on' : k < i ? 'done' : '', title: l.title, 'aria-label': 'Page ' + (k + 1) + ': ' + l.title, onclick: () => go(k) })));
-      box.appendChild(h('div', { class: 'lesson-top' }, h('span', { class: 'kicker', text: 'Lesson ' + (i + 1) + ' of ' + L.length }), dots));
-      const body = h('div', { class: 'lesson-body' }, h('h2', { html: L[i].title }));
+        h('button', { type: 'button', class: k === i ? 'on' : k < i ? 'done' : '', title: UI.plain(l.title), 'aria-label': 'Page ' + (k + 1) + ': ' + UI.plain(l.title), 'aria-current': k === i ? 'step' : null, onclick: () => go(k) }, h('span'))));
+      box.appendChild(h('div', { class: 'lesson-top' }, dots, h('span', { class: 'pg', text: (i + 1) + ' / ' + L.length })));
+      const body = h('div', { class: 'lesson-body enter' }, h('h2', { html: L[i].title }));
       box.appendChild(body);
       L[i].build(body);
       const nextBtn = i < L.length - 1
@@ -274,10 +309,12 @@
         for (let tries = 0; tries < 12 && !(q && q.board); tries++) q = UI.rand.pick(gens)();
         ex = { title: 'New example', src: 'random numbers', problem: q.prompt, solve: q.board, watch: q.solution };
       }
-      const paper = h('div', { class: 'paper' });
-      paper.appendChild(h('div', { class: 'row spread', style: { marginBottom: '6px' } },
-        h('span', { class: 'kicker', text: (k < list.length ? 'Example ' + (k + 1) : 'New example') + (ex.src ? ' · ' + ex.src : '') }),
-        k >= list.length ? h('button', { class: 'btn sm', type: 'button', onclick: () => show(list.length) }, '↻ Different numbers') : null));
+      const paper = h('div', { class: 'paper enter' });
+      paper.appendChild(h('div', { class: 'row spread', style: { marginBottom: '8px' } },
+        h('span', { class: 'row', style: { gap: '8px' } },
+          h('span', { class: 'meta', text: k < list.length ? 'Example ' + (k + 1) + ' of ' + list.length : 'New example' }),
+          ex.src ? h('span', { class: 'tag', text: ex.src }) : null),
+        k >= list.length ? h('button', { class: 'btn sm', type: 'button', onclick: () => show(list.length) }, 'Different numbers') : null));
       paper.appendChild(h('h2', { html: ex.title, style: { marginBottom: '.4em' } }));
       paper.appendChild(h('div', { class: 'problem', html: ex.problem }));
       host.appendChild(paper);
