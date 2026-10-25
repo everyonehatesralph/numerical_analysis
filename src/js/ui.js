@@ -52,7 +52,9 @@
     clear() { try { Object.keys(localStorage).filter((k) => k.startsWith(PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ } },
   });
 
-  UI.settings = Object.assign({ dp: 6, theme: 'auto', size: 'normal' }, Store.get('settings', {}));
+  UI.settings = Object.assign({ dp: 6, theme: 'auto', size: 'normal', focus: 'ndd', examTopics: [], examDate: '' }, Store.get('settings', {}));
+  if (![4, 5, 6, 8, 10].includes(UI.settings.dp)) UI.settings.dp = 6;
+  UI.confirmedTopics = () => Array.isArray(UI.settings.examTopics) ? UI.settings.examTopics.filter((id) => NM.topic(id)) : [];
   // v2: the theme follows the phone's light/dark setting unless the student picks one later
   if (!UI.settings.v) { UI.settings.theme = 'auto'; UI.settings.v = 2; }
   UI.dp = () => UI.settings.dp;
@@ -107,7 +109,7 @@
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
   const Prog = (UI.progress = {
     all() { return Store.get('progress', {}); },
-    get(id) { return Object.assign({ walked: false, solved: 0, clean: 0, tries: 0, streak: 0, wrong: 0 }, this.all()[id] || {}); },
+    get(id) { return Object.assign({ walked: false, solved: 0, clean: 0, guided: 0, tries: 0, streak: 0, wrong: 0 }, this.all()[id] || {}); },
     patch(id, fnc) {
       const all = this.all();
       const cur = this.get(id);
@@ -142,7 +144,7 @@
   });
   UI.stars = (id) => {
     const lv = Prog.level(id);
-    return h('span', { class: 'stars', title: ['Not started', 'Started', 'Getting it (3+ clean solves)', 'Mastered'][lv] },
+    return h('span', { class: 'stars', title: ['Not started', 'Started', '3+ first-try solves', 'Strong independent practice'][lv] },
       [1, 2, 3].map((k) => h('i', { class: k <= lv ? 'on' : '' })));
   };
 
@@ -462,9 +464,10 @@
 
   /* Stop rule picker for iterative methods: steps or tolerance */
   UI.stopRule = (o) => {
-    const mode = UI.select({ label: 'Stop when…', value: o.mode || 'steps', options: [['steps', 'I have done N steps'], ['tol', 'the change is smaller than TOL'], ['places', 'answer is correct to p decimal places']] });
+    const mode = UI.select({ label: 'Stop when…', value: o.mode || 'steps', options: [['steps', 'I have done N steps'], ['tol', o.errorBound ? 'the interval error bound is below TOL' : 'the change is smaller than TOL'], ['places', o.errorBound ? 'the error bound targets p decimal places' : 'the change is below 0.5 × 10^(-p)']] });
     const val = UI.textInput({ label: 'N', value: o.steps || 5, inputmode: 'decimal' });
     const label = val.el.querySelector('span');
+    if (!o.errorBound) val.el.appendChild(h('span', { class: 'hint', text: 'A small change is a stopping rule, not a guarantee of root accuracy. Check the residual and convergence.' }));
     const sync = () => {
       const m = mode.get();
       label.innerHTML = m === 'steps' ? 'N (number of steps)' : m === 'tol' ? 'TOL (e.g. 0.0001)' : 'p (decimal places)';
@@ -479,15 +482,15 @@
       read() {
         const m = mode.get(), v = E.evalNumber(val.get());
         if (m === 'steps') {
-          if (!(v >= 1 && v <= 200)) return { error: 'N must be a whole number from 1 to 200.' };
+          if (!(Number.isInteger(v) && v >= 1 && v <= 200)) return { error: 'N must be a whole number from 1 to 200.' };
           return { steps: Math.round(v), describe: Math.round(v) + ' steps' };
         }
         if (m === 'tol') {
-          if (!(v > 0)) return { error: 'TOL must be a small positive number like 0.0001.' };
+          if (!(isFinite(v) && v > 0)) return { error: 'TOL must be a finite positive number like 0.0001.' };
           return { tol: v, steps: 200, describe: 'TOL = ' + val.get() };
         }
-        if (!(v >= 1 && v <= 12)) return { error: 'p must be between 1 and 12.' };
-        return { tol: 0.5 * Math.pow(10, -Math.round(v)), steps: 200, places: Math.round(v), describe: Math.round(v) + ' correct decimal places (error < 0.5×10<sup>−' + Math.round(v) + '</sup>)' };
+        if (!(Number.isInteger(v) && v >= 1 && v <= 12)) return { error: 'p must be a whole number between 1 and 12.' };
+        return { tol: 0.5 * Math.pow(10, -v), steps: 200, places: v, describe: (o.errorBound ? 'error bound' : 'change between iterates') + ' < 0.5×10<sup>−' + v + '</sup>' };
       },
     };
   };
@@ -506,7 +509,7 @@
   };
   const FEED = {
     ok: '✓ Correct',
-    close: '≈ Very close — keep more decimals (don\'t round until the end)',
+    close: '≈ Close — recheck the arithmetic and keep full precision',
     no: '✗ Not yet',
     empty: 'Type an answer',
     unreadable: 'I can\'t read that number',
@@ -574,10 +577,10 @@
     function finish(allOk, word) {
       if (allOk) {
         status.className = 'fb ok';
-        status.innerHTML = usedHelp ? '✓ All correct. (You used help, so this one counts as practice — try a fresh one alone!)' : '✓ All correct on your own. Nice work!';
+        status.textContent = usedHelp ? '✓ All correct with help. Try a fresh problem independently next.' : checks > 1 ? '✓ Correct after a revision. Try a fresh problem to check your accuracy.' : '✓ Correct on the first try, without help.';
       } else {
         status.className = 'fb ' + (word === 'close' ? 'close' : 'no');
-        status.textContent = word === 'close' ? 'Almost — some answers are very close. Keep more decimals.' : 'Some answers are not right yet. Fix the red ones and press Check again.';
+        status.textContent = word === 'close' ? 'Some answers are close. Recheck the calculations and keep full precision.' : 'Recheck the marked answers, then press Check again. For help with individual calculations, choose One step at a time.';
       }
       if (allOk && !done) {
         done = true;
@@ -606,7 +609,8 @@
           if (res === 'no' || res === 'unreadable') en.wrong++;
         }
         let msg = FEED[res];
-        if (res !== 'ok' && en.wrong >= 2) msg += ' — answer: ' + E.fmtShort(en.answer, 6);
+        if (res !== 'ok' && en.wrong >= 2) msg += ' — use Hint or Show full solution for help';
+        en.input.setAttribute('aria-invalid', res === 'ok' ? 'false' : 'true');
         if (en.fb) { en.fb.className = 'fb ' + (res === 'ok' ? 'ok' : res === 'close' ? 'close' : 'no'); en.fb.textContent = msg; }
         en.input.title = msg;
       });
@@ -644,16 +648,16 @@
   };
 
   /* Practice tab: pick a question type, answer, get a new one. */
-  UI.practice = (parent, topic) => {
+  UI.independentPractice = (parent, topic) => {
     const gens = topic.practice || [];
     if (!gens.length) { parent.appendChild(h('p', { class: 'muted', text: 'Practice for this topic is coming.' })); return; }
     let which = 'mix';
     const score = h('div', { class: 'scorebar' });
     const showScore = () => {
       const p = Prog.get(topic.id);
-      score.innerHTML = '<span>On your own: <b>' + p.clean + '</b></span><span>With help: <b>' + (p.solved - p.clean) + '</b></span>' +
+      score.innerHTML = '<span>First try, without help: <b>' + p.clean + '</b></span><span>After correction or help: <b>' + (p.solved - p.clean) + '</b></span>' +
         (p.streak >= 2 ? '<span class="streak">' + p.streak + ' in a row</span>' : '') +
-        '<span>Goal: 3 on your own</span>';
+        '<span>Practice target: 3 first-try solves</span>';
     };
     const picker = UI.seg([['mix', 'Mixed']].concat(gens.map((g, k) => [k, g.label])), 'mix', (v) => { which = v; fresh(); });
     parent.appendChild(h('p', { class: 'muted', html: 'Solve on paper first, then type your answers to check them. Fractions like <code>-7/6</code> are fine; keep 4+ decimals; tiny numbers as <code>3.2e-5</code>.' }));
@@ -678,6 +682,24 @@
     }
     showScore();
     fresh();
+  };
+
+  UI.practice = (parent, topic, initialMode) => {
+    const modes = [['guided', 'One step at a time'], ['independent', 'Independent practice'], ['review', 'Review mistakes']];
+    let mode = initialMode || UI.store.get('practice-mode', 'guided');
+    if (!modes.some(([id]) => id === mode)) mode = 'guided';
+    const controls = h('div', { class: 'practice-modes' }), host = h('div');
+    parent.append(controls, host);
+    function render() {
+      controls.innerHTML = '';
+      controls.appendChild(UI.seg(modes, mode, (v) => { mode = v; UI.store.set('practice-mode', mode); render(); }));
+      host.innerHTML = '';
+      const independent = () => { mode = 'independent'; UI.store.set('practice-mode', mode); render(); };
+      if (mode === 'independent') UI.independentPractice(host, topic);
+      else if (mode === 'review') NM.coach.reviewList(host, topic, independent);
+      else NM.coach.mount(host, topic, { onIndependent: independent });
+    }
+    render();
   };
 
   /* Fill-in table builder for practice questions.

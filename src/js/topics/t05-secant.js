@@ -21,6 +21,8 @@
     ];
     for (let k = 0; k < detail; k++) {
       const r = rows[k];
+      if (r.exact) { steps.push({ title: 'An iterate is already a root', lines: ['<i>f</i>(' + n(r.x) + ') = 0'], note: 'Stop; another secant step is unnecessary.' }); break; }
+      if (r.bad) { steps.push({ title: 'Undefined function value', text: 'Choose starting points where the function is defined.' }); break; }
       if (r.flat) { steps.push({ title: 'Problem', lines: ['<i>f</i>(' + M.v('x', r.i) + ') = <i>f</i>(' + M.v('x', r.i - 1) + ')'], note: 'The secant line is flat and never meets the axis.' }); break; }
       const lines = [M.v('x', r.i + 1) + ' = ' + n(r.x) + ' − ' + M.fr(M.paren(nf(r.fx)) + '(' + n(r.x) + ' − ' + M.paren(n(r.xp)) + ')', M.paren(nf(r.fx)) + ' − ' + M.paren(nf(r.fp))) + ' = ' + M.res(nf(r.next))];
       if (k + 1 < rows.length) lines.push('<i>f</i>(' + n(r.next) + ') = ' + E.subHTML(fc.node, n(r.next)) + ' = ' + nf(rows[k + 1].fx));
@@ -29,7 +31,7 @@
     if (rows.length > detail) {
       steps.push({ title: 'Keep going the same way', table: { head: ['<i>i</i>', M.v('x', 'i−1'), M.v('x', 'i'), '<i>f</i>(' + M.v('x', 'i−1') + ')', '<i>f</i>(' + M.v('x', 'i') + ')', M.v('x', 'i+1')], rows: rows.map((r) => [r.i, nf(r.xp), nf(r.x), nf(r.fp), nf(r.fx), r.next === undefined ? '—' : nf(r.next)]) } });
     }
-    return { steps, answer: ['root ≈ ' + M.v('x', rows[rows.length - 1].i + 1) + ' = <b>' + nf(res.last) + '</b>'] };
+    return { steps, answer: res.stop === 'undefined' || res.stop === 'flat' || res.stop === 'blowup' ? ['The secant iteration stopped (' + res.stop + '). Choose different starting points; this is not a converged root.'] : ['root ≈ ' + M.v('x', rows[rows.length - 1].i + 1) + ' = <b>' + nf(res.last) + '</b>'] };
   }
   function falseBoard(fc, res, o) {
     o = o || {};

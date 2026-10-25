@@ -12,30 +12,34 @@
     const pc = prog.get(cur.id);
     const totalClean = NM.topics.reduce((s, t) => s + prog.get(t.id).clean, 0);
     const streak = prog.dayStreak();
-    const next = !pc.walked ? ['learn', 'Start the lesson'] : pc.clean < 3 ? ['examples', 'Do the examples'] : ['practice', 'Keep practicing'];
+    const due = NM.coach.mistakes.due(cur.id);
+    const next = due.length ? ['practice/review', 'Review a missed calculation'] : !pc.walked ? ['learn', 'Start the lesson'] : !pc.guided ? ['practice/guided', 'Try one step at a time'] : ['practice/independent', 'Try a fresh problem'];
     el.appendChild(h('div', { class: 'card continue' },
-      h('span', { class: 'kicker', text: 'Your class is on' }),
+      h('p', { class: 'muted small', text: 'Your study focus · change it in Settings' }),
       h('h1', { text: cur.title }),
       h('p', { class: 'muted', style: { margin: 0 }, html: cur.tagline }),
       h('div', { class: 'row', style: { marginTop: '6px' } },
         h('a', { class: 'btn primary', href: '#/t/' + cur.id + '/' + next[0] }, next[1] + ' →'),
         // the two other sections that aren't the main button, so nothing is offered twice
         [['learn', 'Lesson'], ['explain', 'In depth'], ['examples', 'Examples'], ['practice', 'Practice']]
-          .filter(([k]) => k !== next[0]).slice(next[0] === 'learn' ? 0 : 1, next[0] === 'learn' ? 2 : 3)
+          .filter(([k]) => k !== next[0].split('/')[0]).slice(0, 2)
           .map(([k, label]) => h('a', { class: 'btn', href: '#/t/' + cur.id + '/' + k }, label)))));
     el.appendChild(h('div', { class: 'card' },
-      h('h2', { text: 'Today: 45 minutes' }),
+      h('h2', { text: 'Your next study session' }),
+      h('p', { class: 'muted', text: 'Work at your pace. Finish one problem carefully before adding a timer.' }),
       h('ol', { class: 'today' },
-        h('li', null, h('span', { class: 'min', text: '5 min' }), h('span', { html: '<a href="#/formulas">Formula sheet</a>: cover it, write the formulas from memory, check.' })),
-        h('li', null, h('span', { class: 'min', text: '25 min' }), h('span', { html: '<a href="#/t/' + cur.id + '/examples">' + cur.title + ' examples</a> on paper, then <a href="#/t/' + cur.id + '/practice">practice</a> until 3 on your own.' })),
-        h('li', null, h('span', { class: 'min', text: '10 min' }), h('span', { html: '<a href="#/drill">Exam drill</a> with older topics mixed in.' })),
-        h('li', null, h('span', { class: 'min', text: '5 min' }), h('span', { html: 'Write today\'s mistakes in a notebook, one line each.' })))));
+        h('li', null, h('span', { class: 'min', text: '1' }), h('span', { html: '<a href="#/t/' + cur.id + '/examples">Work through one example</a>. Say what you would do before revealing the next step.' })),
+        h('li', null, h('span', { class: 'min', text: '2' }), h('span', { html: '<a href="#/t/' + cur.id + '/practice/guided">Check one calculation at a time</a>. Get feedback on the operation you are doing.' })),
+        h('li', null, h('span', { class: 'min', text: '3' }), h('span', { html: '<a href="#/t/' + cur.id + '/practice/independent">Try a fresh problem independently</a>, then <a href="#/mistakes">revisit saved mistakes</a> in a later session.' })))));
+    const confirmed = UI.confirmedTopics();
+    el.appendChild(h('p', { class: 'muted small', text: confirmed.length ? 'Confirmed finals coverage: ' + confirmed.map((id) => NM.topic(id).title).join(', ') + '.' : 'Finals coverage is not confirmed yet. Select topics in Settings as your instructor confirms them.' }));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(UI.settings.examDate)) el.appendChild(h('p', { class: 'muted small', text: 'Finals date: ' + new Date(UI.settings.examDate + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) }));
     el.appendChild(h('div', { class: 'stat-row', style: { margin: '6px 4px 4px' } },
       h('div', { class: 'stat' }, h('b', { text: streak }), h('span', { text: streak === 1 ? 'day in a row' : 'days in a row' })),
-      h('div', { class: 'stat' }, h('b', { text: totalClean }), h('span', { text: 'solved on your own' })),
+      h('div', { class: 'stat' }, h('b', { text: totalClean }), h('span', { text: 'first-try independent solves' })),
       h('div', { class: 'stat' }, h('b', { text: NM.topics.filter((t) => prog.level(t.id) > 0).length + '/' + NM.topics.length }), h('span', { text: 'topics started' }))));
     NM.UNITS.forEach(([u, name]) => {
-      el.appendChild(UI.section(name, u === 'finals' ? 'on the final' : u === 'midterm' ? 'now' : 'review'));
+      el.appendChild(UI.section(name, u === 'finals' ? 'confirm coverage' : 'review'));
       el.appendChild(h('div', { class: 'trow-list' }, NM.topics.filter((t) => t.unit === u).map((t) =>
         h('a', { class: 'trow' + (t.id === NM.CURRENT ? ' current' : ''), href: '#/t/' + t.id + '/learn' },
           h('span', { class: 'tn', text: t.num }),
@@ -52,12 +56,13 @@
     el.appendChild(UI.recipe([
       '<b>Learn</b> — read the short lesson pages. In "Watch it", say the next number before you press Next.',
       '<b>Examples</b> — read the problem, solve it on paper, then reveal the solution one step at a time and compare.',
-      '<b>Practice</b> — fresh questions until you get <b>3 right on your own</b> (no hint).',
+      '<b>Practice</b> — start with One step at a time. Each operation is checked before you continue. Then try fresh questions in Independent practice.',
+      '<b>Review mistakes</b> — revisit saved calculations in a later session. Answers stay hidden until you try or ask for help.',
       '<b>Solver</b> — type your homework and compare every number with yours. The first number that differs is your mistake.',
     ]));
-    el.appendChild(UI.section('Order until the final'));
+    el.appendChild(UI.section('Suggested learning order'));
     const order = [
-      ['ndd', 'Your class is here. Master the triangle first.'], ['lagrange', 'Same answer as divided differences — use one to check the other.'],
+      ['ndd', 'Build the triangle one cell at a time.'], ['lagrange', 'Same answer as divided differences — use one to check the other.'],
       ['horner', 'Short; needed to evaluate Newton\'s form.'], ['interp-error', 'First topic after the midterm (§3.2).'],
       ['chebyshev', 'After midterm (§3.3).'], ['spline', 'After midterm (§3.4).'],
       ['diff', 'After midterm (§5.1).'], ['integrate', 'After midterm (§5.2).'],
@@ -72,6 +77,24 @@
       h('li', { html: 'Which sections does the final cover — everything, or only after the midterm?' }),
       h('li', { html: 'Is it by hand with a calculator, or also theory / MATLAB?' }),
       h('li', { html: 'How many decimal places, and should we round at each step?' })));
+  };
+
+  P.mistakes = (el) => {
+    el.appendChild(h('h1', { text: 'Review mistakes' }));
+    el.appendChild(h('p', { text: 'Missed guided calculations are saved here for another session. A correct review without help moves the next review farther apart.' }));
+    const rows = NM.coach.mistakes.all(), due = NM.coach.mistakes.due();
+    if (!rows.length) {
+      el.appendChild(h('p', { class: 'muted', text: 'No saved mistakes yet. When a guided step needs another try, it will appear here.' }));
+      el.appendChild(h('a', { class: 'btn primary', href: '#/t/' + NM.CURRENT + '/practice/guided' }, 'Start guided practice'));
+      return;
+    }
+    el.appendChild(h('p', { text: due.length ? due.length + ' calculation' + (due.length === 1 ? ' is' : 's are') + ' due for review.' : 'Nothing is due yet. You can still retry a calculation now.' }));
+    const list = h('div', { class: 'trow-list' });
+    NM.topics.forEach((t) => {
+      const saved = rows.filter((r) => r.topic === t.id), ready = due.filter((r) => r.topic === t.id);
+      if (saved.length) list.appendChild(h('a', { class: 'trow', href: '#/t/' + t.id + '/practice/review' }, h('span', { class: 'tn', text: t.num }), h('span', null, h('b', { text: t.title }), h('span', { class: 'tl', text: saved.length + ' saved · ' + ready.length + ' due' }))));
+    });
+    el.appendChild(list);
   };
 
   /* ---------------- Formula sheet ---------------- */
@@ -90,7 +113,11 @@
   P.drill = (el) => {
     el.appendChild(h('h1', { text: 'Exam drill' }));
     el.appendChild(h('p', { class: 'muted', html: 'Mixed questions, one after another. Do each on paper first. You get a score and a list of topics to review.' }));
-    const saved = UI.store.get('drill', { units: ['midterm'], count: 10 });
+    const confirmed = UI.confirmedTopics();
+    const saved = UI.store.get('drill', { units: [NM.topic(NM.CURRENT).unit], count: 5, confirmedOnly: confirmed.length > 0 });
+    const confirmedOnly = h('input', { type: 'checkbox', id: 'confirmed-drill' });
+    confirmedOnly.checked = !!saved.confirmedOnly && confirmed.length > 0;
+    confirmedOnly.disabled = !confirmed.length;
     const boxes = NM.UNITS.map(([u, name]) => {
       const cb = h('input', { type: 'checkbox', id: 'drill-' + u });
       cb.checked = saved.units.includes(u);
@@ -98,16 +125,22 @@
     });
     let count = saved.count;
     const host = h('div');
-    el.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Topics' }), h('div', { style: { marginBottom: '12px' } }, boxes.map((b) => b.el)),
+    const syncCoverage = () => boxes.forEach((b) => { b.cb.disabled = confirmedOnly.checked; });
+    confirmedOnly.addEventListener('change', syncCoverage); syncCoverage();
+    el.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Topics' }),
+      h('label', { class: 'coverage-choice' }, confirmedOnly, h('span', { text: 'Use only my confirmed finals topics' })),
+      !confirmed.length ? h('p', { class: 'muted small', text: 'Finals coverage is not confirmed yet. Choose review groups below, or add confirmed topics in Settings.' }) : null,
+      h('div', { style: { marginBottom: '12px' } }, boxes.map((b) => b.el)),
       h('div', { class: 'row' }, h('span', { text: 'Questions:' }), UI.seg([[5, '5'], [10, '10'], [15, '15'], [20, '20']], count, (v) => { count = +v; }),
         h('span', { class: 'grow' }), h('button', { class: 'btn primary', type: 'button', onclick: start }, 'Start drill'))));
     el.appendChild(host);
     function start() {
       const units = boxes.filter((b) => b.cb.checked).map((b) => b.u);
-      if (!units.length) { UI.toast('Pick at least one group of topics.'); return; }
-      UI.store.set('drill', { units, count });
+      if (!confirmedOnly.checked && !units.length) { UI.toast('Pick at least one group of topics.'); return; }
+      UI.store.set('drill', { units, count, confirmedOnly: confirmedOnly.checked });
       const pool = [];
-      NM.topics.filter((t) => units.includes(t.unit)).forEach((t) => (t.practice || []).forEach((g) => pool.push({ t, g })));
+      NM.topics.filter((t) => confirmedOnly.checked ? confirmed.includes(t.id) : units.includes(t.unit)).forEach((t) => (t.practice || []).forEach((g) => pool.push({ t, g })));
+      if (!pool.length) { UI.toast('Choose at least one available topic.'); return; }
       const qs = Array.from({ length: count }, () => UI.rand.pick(pool));
       const results = [];
       const t0 = Date.now();
@@ -149,7 +182,7 @@
         const weak = Object.values(byTopic).filter((b) => b.clean < b.n);
         const s = Math.floor((Date.now() - t0) / 1000);
         qhost.appendChild(h('div', { class: 'card' },
-          h('h2', { text: 'Score: ' + clean + ' / ' + results.length + ' on your own' }),
+          h('h2', { text: 'Score: ' + clean + ' / ' + results.length + ' first try, without help' }),
           h('p', { class: 'muted', text: 'Time: ' + Math.floor(s / 60) + ' min ' + (s % 60) + ' s' }),
           UI.table(['Topic', 'Questions', 'On your own'], Object.values(byTopic).map((b) => ['<a href="#/t/' + b.t.id + '/examples">' + b.t.title + '</a>', b.n, b.clean + (b.clean === b.n ? ' ✓' : '')]), { align: ['l', 'c', 'c'] }).el,
           weak.length ? h('p', { html: '<b>Review next:</b> ' + weak.map((b) => '<a href="#/t/' + b.t.id + '/examples">' + b.t.title + '</a>').join(', ') + ' — redo the examples, then 3 practice questions.' }) : h('p', { html: '<b>Perfect run.</b> Add more topics or more questions.' }),
@@ -200,6 +233,19 @@
     const th = UI.select({ label: 'Theme', value: UI.settings.theme, options: [['auto', 'Match my phone (light or dark)'], ['light', 'Always light'], ['dark', 'Always dark']], onChange: (v) => { UI.settings.theme = v; UI.saveSettings(); UI.applyTheme(); } });
     const sz = UI.select({ label: 'Text size', value: UI.settings.size, options: [['normal', 'Normal'], ['large', 'Large'], ['xl', 'Extra large']], onChange: (v) => { UI.settings.size = v; UI.saveSettings(); UI.applySize(); } });
     el.appendChild(h('div', { class: 'card' }, h('div', { class: 'form-grid' }, dp.el, th.el, sz.el)));
+    el.appendChild(h('h2', { text: 'Study focus and finals coverage' }));
+    const focus = UI.select({ label: 'My current study focus', value: NM.CURRENT, options: NM.topics.map((t) => [t.id, t.title]), onChange: (v) => { UI.settings.focus = v; UI.saveSettings(); UI.refreshNav(); UI.toast('Study focus saved'); } });
+    const examDate = h('input', { type: 'date', value: UI.settings.examDate || '' });
+    examDate.addEventListener('change', () => { UI.settings.examDate = examDate.value; UI.saveSettings(); });
+    el.appendChild(h('div', { class: 'form-grid' }, focus.el, h('label', { class: 'field' }, h('span', { text: 'Finals date (optional)' }), examDate)));
+    el.appendChild(h('p', { class: 'muted small', text: 'Select only topics your instructor has confirmed. Leave them unchecked while coverage is unknown. Exam drill can use this exact selection.' }));
+    const coverage = h('div', { class: 'coverage-grid' }), selected = new Set(UI.confirmedTopics());
+    NM.topics.forEach((t) => {
+      const cb = h('input', { type: 'checkbox' }); cb.checked = selected.has(t.id);
+      cb.addEventListener('change', () => { cb.checked ? selected.add(t.id) : selected.delete(t.id); UI.settings.examTopics = NM.topics.filter((t) => selected.has(t.id)).map((t) => t.id); UI.saveSettings(); });
+      coverage.appendChild(h('label', { class: 'coverage-choice' }, cb, h('span', { text: t.title })));
+    });
+    el.appendChild(coverage);
     el.appendChild(h('h2', { text: 'Your progress' }));
     el.appendChild(h('p', { class: 'muted', html: 'Saved in this browser on this device. To move it, make a backup code here and restore it on the other device.' }));
     const area = h('textarea', { id: 'backup-code', rows: '4', class: 'mono', style: { width: '100%' }, spellcheck: 'false', 'aria-label': 'backup code' });
@@ -214,20 +260,24 @@
       }
       clearTimeout(armed); armed = null;
       resetBtn.textContent = 'Reset progress'; resetBtn.style.borderColor = ''; resetBtn.style.color = '';
-      UI.store.set('progress', {}); UI.store.set('days', []); UI.refreshNav(); UI.toast('Progress reset');
+      UI.store.set('progress', {}); UI.store.set('days', []); UI.store.set('mistakes', []); UI.refreshNav(); UI.toast('Progress and saved mistakes reset');
     });
     el.appendChild(h('div', { class: 'card' }, area,
       h('div', { class: 'row', style: { marginTop: '10px' } },
         h('button', { class: 'btn', type: 'button', onclick: () => {
-          area.value = JSON.stringify({ progress: UI.store.get('progress', {}), days: UI.store.get('days', []), settings: UI.settings });
+          area.value = JSON.stringify({ progress: UI.store.get('progress', {}), days: UI.store.get('days', []), settings: UI.settings, mistakes: NM.coach.mistakes.all() });
           area.select();
           try { navigator.clipboard.writeText(area.value).then(() => UI.toast('Backup code copied'), () => UI.toast('Select the text and copy it')); } catch (e) { UI.toast('Select the text and copy it'); }
         } }, 'Make backup code'),
         h('button', { class: 'btn', type: 'button', onclick: () => {
           try {
             const d = JSON.parse(area.value);
-            if (!d || typeof d.progress !== 'object') throw new Error('bad');
+            if (!d || !d.progress || typeof d.progress !== 'object' || Array.isArray(d.progress)) throw new Error('bad');
+            if (!Object.values(d.progress).every((p) => p && typeof p === 'object' && ['solved', 'clean', 'guided', 'tries', 'streak', 'wrong'].every((k) => p[k] === undefined || Number.isInteger(p[k]) && p[k] >= 0) && !(p.clean > p.solved))) throw new Error('bad progress');
+            if (d.mistakes !== undefined && (!Array.isArray(d.mistakes) || d.mistakes.length > 60 || !d.mistakes.every((r) => NM.coach.validMistake(r)))) throw new Error('bad mistakes');
+            if (d.settings && d.settings.dp !== undefined && ![4, 5, 6, 8, 10].includes(d.settings.dp)) throw new Error('bad precision');
             UI.store.set('progress', d.progress); UI.store.set('days', d.days || []);
+            UI.store.set('mistakes', d.mistakes || []);
             if (d.settings) { Object.assign(UI.settings, d.settings); UI.saveSettings(); UI.applyTheme(); UI.applySize(); }
             UI.toast('Progress restored'); UI.refreshNav(); NM.route();
           } catch (e) { UI.toast('That backup code doesn\'t look right.'); }

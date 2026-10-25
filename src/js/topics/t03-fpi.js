@@ -66,7 +66,7 @@
         title: 'Check: will it converge?',
         lines: ['<i>g</i>′(<i>x</i>) = ' + an.dg.html, '<i>S</i> = |<i>g</i>′(<i>r</i>)| ' + (an.conv ? '≈' : '=') + ' |<i>g</i>′(' + n(an.r) + ')| = ' + M.res(E.fmtShort(an.S, 4))],
         note: (an.conv ? '' : 'Here <i>r</i> ≈ ' + n(an.r) + ' is the true fixed point (where <i>g</i>(<i>x</i>) = <i>x</i>). ') +
-          (an.S < 1 ? '<i>S</i> &lt; 1, so FPI converges near <i>r</i>: each error is about ' + E.fmtShort(an.S, 3) + ' times the one before.' : '<i>S</i> &gt; 1, so this <i>g</i> cannot converge to the root. Choose a different rearrangement.'),
+          (an.S < 1 ? '<i>S</i> &lt; 1, so FPI converges near <i>r</i>: each error is about ' + E.fmtShort(an.S, 3) + ' times the one before.' : an.S > 1 ? '<i>S</i> &gt; 1: this fixed point repels nearby iterates. Choose a different rearrangement.' : '<i>S</i> = 1: this derivative test is inconclusive. More analysis is needed.'),
       });
     }
     const last = rows[rows.length - 1];

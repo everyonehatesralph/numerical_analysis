@@ -12,16 +12,18 @@
     const fact = E.factorial(n);
     const d = E.nthDerivative(fc.node, n);
     const lo = Math.min(...xs, x), hi = Math.max(...xs, x);
-    const mx = E.maxAbsOn(d.f, lo, hi);
+    const proof = E.absBound(d.node, lo, hi);
+    const mx = proof || E.maxAbsOn(d.f, lo, hi);
+    if (mx.undefinedValues || xs.concat([x]).some((t) => !isFinite(fc.f(t)))) throw new Error('The function or required derivative is undefined on this interval. Check the nodes and domain.');
     const P = E.interpFn(xs, xs.map((t) => fc.f(t)));
-    return { n, prod, fact, d, lo, hi, max: mx.max, at: mx.at, bound: (Math.abs(prod) / fact) * mx.max, actual: Math.abs(fc.f(x) - P(x)), P };
+    return { n, prod, fact, d, lo, hi, max: mx.max, guaranteed: !!proof, bound: (Math.abs(prod) / fact) * mx.max, actual: Math.abs(fc.f(x) - P(x)), P };
   }
 
   /* ---------- written solution ---------- */
   function errorBoard(fc, xs, x, o) {
     o = o || {};
     const b = bound(fc, xs, x);
-    if (o.maxValue !== undefined) { b.max = o.maxValue; b.bound = (Math.abs(b.prod) / b.fact) * b.max; }
+    if (o.maxValue !== undefined) { b.max = o.maxValue; b.bound = (Math.abs(b.prod) / b.fact) * b.max; b.guaranteed = true; }
     const n = b.n;
     const nodes = o.labels || xs.map(s4);
     return {
@@ -29,11 +31,11 @@
         { title: 'Count the points', lines: ['<i>n</i> = ' + n + ' nodes: ' + nodes.join(', ') + ' &nbsp;→&nbsp; <i>P</i> has degree ≤ ' + (n - 1)], note: 'Use <i>n</i> (the number of points), not the degree, in the formula.' },
         { title: 'Write the error formula', lines: ['<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>) = ' + M.fr(xs.map((_, k) => '(<i>x</i> − ' + M.v('x', k + 1) + ')').join(''), n + '!') + ' <i>f</i><sup>(' + n + ')</sup>(<i>c</i>)'] },
         { title: 'The product at x = ' + s4(x), lines: [xs.map((xi, k) => '(' + s4(x) + ' − ' + M.paren(nodes[k]) + ')').join(''), '= ' + xs.map((xi) => M.paren(s4(x - xi))).join(' · ') + ' = ' + E.fmtE(b.prod, 5), '|product| = ' + M.res(E.fmtE(Math.abs(b.prod), 5))] },
-        { title: 'The largest possible derivative', lines: ['<i>f</i><sup>(' + n + ')</sup>(<i>x</i>) = ' + b.d.html, 'max |<i>f</i><sup>(' + n + ')</sup>| on [' + s4(b.lo) + ', ' + s4(b.hi) + '] ≈ ' + M.res(E.fmtShort(b.max, 6))], note: o.maxWhy || 'Because <i>c</i> is unknown, we use the worst case on the interval.' },
-        { title: 'Put it together', lines: ['|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' + M.fr(E.fmtE(Math.abs(b.prod), 5), n + '!') + ' × ' + E.fmtShort(b.max, 6) + ' = ' + M.fr(E.fmtE(Math.abs(b.prod), 5), String(b.fact)) + ' × ' + E.fmtShort(b.max, 6) + ' = ' + M.res(E.fmtE(b.bound, 4))] },
-        { title: 'Compare with the actual error', lines: ['actual |<i>f</i> − <i>P</i>| = ' + E.fmtE(b.actual, 4) + (b.actual <= b.bound * 1.0000001 ? ' ≤ bound ✓' : '')], note: 'The bound is a guarantee; the real error is usually a bit smaller.' },
+        { title: b.guaranteed ? 'An upper bound for the derivative' : 'A sampled derivative estimate', lines: ['<i>f</i><sup>(' + n + ')</sup>(<i>x</i>) = ' + b.d.html, (b.guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>| ≤ ' : 'sampled max ≈ ') + M.res(E.fmtE(b.max, 7))], note: o.maxWhy || (b.guaranteed ? 'Conservative interval arithmetic bounds the derivative over the whole interval. The interpolation theorem requires the relevant derivatives to exist throughout it.' : 'Sampling can miss peaks. This is an estimate, not a guaranteed upper bound.') },
+        { title: b.guaranteed ? 'Put it together' : 'Estimated error scale', lines: [(b.guaranteed ? '|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' : 'estimated scale ≈ ') + M.fr(E.fmtE(Math.abs(b.prod), 5), String(b.fact)) + ' × ' + E.fmtE(b.max, 7) + ' = ' + M.res(E.fmtE(b.bound, 4))] },
+        { title: 'Compare with the actual error', lines: ['actual |<i>f</i> − <i>P</i>| ≈ ' + E.fmtE(b.actual, 4) + (b.guaranteed && b.actual <= b.bound * 1.0000001 ? ' ≤ bound ✓' : '')], note: b.guaranteed ? 'A conservative bound may be larger than the exact maximum-based bound in the book.' : 'Do not report the sampled estimate as a guaranteed error bound.' },
       ],
-      answer: ['|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' + E.fmtE(b.bound, 4)],
+      answer: [(b.guaranteed ? '|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' : 'Estimated error scale (not guaranteed): ') + E.fmtE(b.bound, 4)],
     };
   }
 
@@ -158,7 +160,8 @@
         if (!isFinite(x)) { out.appendChild(UI.error('x must be a number.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, errorBoard(fc, xs, x, { labels: xl.items }), { reveal: 'all' });
+        try { UI.board(paper, errorBoard(fc, xs, x, { labels: xl.items }), { reveal: 'all' }); }
+        catch (e) { out.innerHTML = ''; out.appendChild(UI.error(e.message)); return; }
         UI.watch(paper, (b) => errorWalk(b, { fc, xs, x }));
       }
       run();

@@ -18,6 +18,7 @@
   function diffBoard(fc, x, hh, which, o) {
     o = o || {};
     const r = E.diffFormulas(fc.f, x, hh);
+    if (which.some((k) => !isFinite(r[k]))) throw new Error('The requested formula uses a point where f is undefined. Check x, h, and the function domain.');
     const xm = x - hh, xp = x + hh;
     const steps = [{
       title: 'Values you need (h = ' + n(hh) + ')',
@@ -32,7 +33,7 @@
       forward: M.fr(nf(r.fp) + ' − ' + M.paren(nf(r.f0)), n(hh)),
       backward: M.fr(nf(r.f0) + ' − ' + M.paren(nf(r.fm)), n(hh)),
       centered: M.fr(nf(r.fp) + ' − ' + M.paren(nf(r.fm)), '2(' + n(hh) + ')'),
-      second: M.fr(nf(r.fm) + ' − 2' + M.paren(nf(r.f0)) + ' + ' + M.paren(nf(r.fp)), '(' + n(hh) + ')<sup>2</sup>'),
+      second: M.fr(nf(r.fm) + ' − 2 × (' + nf(r.f0) + ') + ' + M.paren(nf(r.fp)), '(' + n(hh) + ')<sup>2</sup>'),
     };
     const d1 = E.derivative(fc.node), d2 = E.nthDerivative(fc.node, 2);
     const answer = [];
@@ -111,7 +112,7 @@
         el.appendChild(h('p', { html: '<b>Order:</b> O(<i>h</i>) → halve <i>h</i>, the error halves. O(<i>h</i><sup>2</sup>) → halve <i>h</i>, the error drops to a quarter.' }));
       } },
       { title: 'Smaller h is not always better', build(el) {
-        el.appendChild(h('p', { html: 'Calculators keep about 16 digits. When <i>h</i> is tiny, <i>f</i>(<i>x</i> + <i>h</i>) and <i>f</i>(<i>x</i>) are almost equal and subtracting loses digits. The error shrinks, then grows again. For <i>e</i><sup><i>x</i></sup> at 0:' }));
+        el.appendChild(h('p', { html: 'This app uses about 16 significant digits internally; your calculator’s precision may differ. When <i>h</i> is tiny, <i>f</i>(<i>x</i> + <i>h</i>) and <i>f</i>(<i>x</i>) are almost equal and subtracting loses digits. The error shrinks, then grows again. For <i>e</i><sup><i>x</i></sup> at 0:' }));
         el.appendChild(hTable(E.compile('e^x'), 0).el);
         el.appendChild(h('p', { html: '<b>Richardson extrapolation</b> gets more accuracy for free: <i>Q</i> ≈ (2<sup><i>n</i></sup><i>F</i>(<i>h</i>/2) − <i>F</i>(<i>h</i>))/(2<sup><i>n</i></sup> − 1), with <i>n</i> = the order.' }));
       } },
@@ -143,7 +144,8 @@
         if (!isFinite(x) || !(hh > 0)) { out.appendChild(UI.error('Need a number x and a positive h.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, diffBoard(fc, x, hh, ['forward', 'backward', 'centered', 'second'], { richardson: true, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
+        try { UI.board(paper, diffBoard(fc, x, hh, ['forward', 'backward', 'centered', 'second'], { richardson: true, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
+        catch (e) { out.innerHTML = ''; out.appendChild(UI.error(e.message)); return; }
         UI.watch(paper, (b) => { diffPlot(b, fc, x, hh); b.appendChild(h('h3', { text: 'Error as h shrinks' })); b.appendChild(hTable(fc, x).el); }, 'Show the picture and the error table');
       }
       run();

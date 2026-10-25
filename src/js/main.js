@@ -7,11 +7,11 @@
   const UNITS = [
     ['prelim', 'Prelim'],
     ['midterm', 'Midterm'],
-    ['finals', 'After midterm (Finals)'],
+    ['finals', 'After midterm'],
   ];
   NM.UNITS = UNITS;
   NM.unitName = (u) => (UNITS.find((x) => x[0] === u) || [u, u])[1];
-  NM.CURRENT = 'ndd';
+  Object.defineProperty(NM, 'CURRENT', { get: () => NM.topic(UI.settings.focus) ? UI.settings.focus : 'ndd' });
 
   const ICON = {
     learn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>',
@@ -35,7 +35,7 @@
       (NM.EXPLAIN[t.id] || []).forEach((it, k) => INDEX.push({ kind: 'In depth', label: UI.plain(it.q), sub: t.title, href: '#/t/' + t.id + '/explain', open: 'q-' + t.id + '-' + (k + 1), text: (UI.plain(it.q) + ' ' + t.title + ' ' + t.short).toLowerCase() }));
       (t.examples || []).forEach((ex) => INDEX.push({ kind: 'Example', label: UI.plain(ex.title), sub: t.title + (ex.src ? ' · ' + ex.src : ''), href: '#/t/' + t.id + '/examples', text: (UI.plain(ex.title) + ' ' + (ex.src || '') + ' ' + t.title).toLowerCase() }));
     });
-    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
+    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/mistakes', 'Review mistakes'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
   }
   function searchBox() {
     const input = h('input', { type: 'search', id: 'site-search', placeholder: 'Search topics and questions', autocomplete: 'off', 'aria-label': 'Search topics and questions' });
@@ -95,13 +95,14 @@
     UNITS.forEach(([u, name]) => {
       nav.appendChild(h('div', { class: 'nav-group', text: name }));
       NM.topics.filter((t) => t.unit === u).forEach((t) => {
-        const extra = t.id === NM.CURRENT ? h('span', { class: 'now', text: 'NOW' }) : UI.stars(t.id);
+        const extra = t.id === NM.CURRENT ? h('span', { class: 'now', text: 'FOCUS' }) : UI.stars(t.id);
         nav.appendChild(navLink('#/t/' + t.id + '/learn', t.title, extra, t.num));
       });
     });
     nav.appendChild(h('div', { class: 'nav-group', text: 'Review' }));
     nav.appendChild(navLink('#/formulas', 'Formula sheet'));
     nav.appendChild(navLink('#/drill', 'Exam drill'));
+    nav.appendChild(navLink('#/mistakes', 'Review mistakes'));
     nav.appendChild(navLink('#/tips', 'Calculator & exam tips'));
     nav.appendChild(navLink('#/settings', 'Settings'));
     return nav;
@@ -157,7 +158,7 @@
     UI.refreshNav();
   }
 
-  function topicPage(t, tab) {
+  function topicPage(t, tab, practiceMode) {
     const el = content;
     if (!TABS.some((x) => x[0] === tab)) tab = 'learn';
     const idx = NM.topics.indexOf(t);
@@ -166,7 +167,7 @@
       h('div', { class: 'meta' },
         h('span', { class: 'badge ' + t.unit, text: 'Topic ' + t.num + ' · ' + NM.unitName(t.unit) }),
         h('span', { class: 'badge', text: t.book }),
-        t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your class is here' }) : null),
+        t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your study focus' }) : null),
       h('h1', { text: t.title }),
       h('p', { class: 'tagline', html: t.tagline })));
     el.appendChild(h('nav', { class: 'tabbar', 'aria-label': 'Topic sections' },
@@ -176,7 +177,7 @@
     if (tab === 'solve') {
       body.appendChild(h('p', { class: 'muted', html: 'Type your own problem (like your homework). You get the full written solution, every number, to compare with your work.' }));
       t.solve(body);
-    } else if (tab === 'practice') UI.practice(body, t);
+    } else if (tab === 'practice') UI.practice(body, t, practiceMode);
     else if (tab === 'examples') UI.examples(body, t);
     else if (tab === 'explain') UI.faq(body, NM.EXPLAIN[t.id] || [], t.id);
     else UI.lessons(body, t);
@@ -200,11 +201,11 @@
     document.body.classList.remove('nav-open');
     try {
       if (parts[0] === 't' && NM.topic(parts[1])) {
-        topicPage(NM.topic(parts[1]), parts[2] || 'learn');
+        topicPage(NM.topic(parts[1]), parts[2] || 'learn', parts[3]);
       } else {
         const name = parts[0] || 'home';
         const page = NM.pages[name] || NM.pages.home;
-        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', tips: 'Calculator & exam tips', settings: 'Settings' };
+        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', mistakes: 'Review mistakes', tips: 'Calculator & exam tips', settings: 'Settings' };
         crumbs.innerHTML = '<b>' + (names[name] || names.home) + '</b>';
         document.title = 'Numerical Methods Reviewer';
         page(content, crumbs, parts.slice(1));

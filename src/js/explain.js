@@ -68,7 +68,7 @@
         <li><b>Degree mode.</b> With sin/cos your calculator must be in radians, or every sign you read is wrong.</li>
         <li><b>Tiny f(c) values.</b> −0.0003 is still negative. Look at the sign, not the size.</li></ul>` },
       { q: 'Why learn bisection if it is slow?', a: `
-        <p>Because it <b>always works</b> once you have a sign change, and you know in advance how many steps you need. Faster methods (Newton, secant) can fail if you start in the wrong place.</p>
+        <p>For a continuous function with opposite endpoint signs, bisection keeps a root bracketed, and you know in advance how many steps meet an error target. Faster methods (Newton, secant) can fail if you start in the wrong place.</p>
         <p>In practice people combine them: a few bisection steps to get close and safe, then Newton to finish fast.</p>` },
       { q: 'What do exam questions look like?', a: `
         <ul><li>"Find an interval of length one containing a root" → try whole numbers until the sign flips.</li>
@@ -314,7 +314,7 @@
     /* ------------------------------------------------------------------ */
     spline: [
       { q: 'Why not just use one polynomial through all the points?', a: `
-        <p>With many points, one polynomial has a high degree and tends to wiggle between and beyond the points (the Runge phenomenon). It is also sensitive: moving one point changes the curve everywhere. A spline uses a low-degree piece on each gap, so each point only affects the curve near it.</p>` },
+        <p>With many points, one polynomial has a high degree and may wiggle between and beyond the points (the Runge phenomenon). A spline uses a low-degree piece on each gap. Changing a point usually has its strongest effect nearby, although a natural spline’s coefficients can change across the entire interval.</p>` },
       { q: 'Why cubic pieces, and not lines or parabolas?', a: `
         <p>Lines (linear splines) have corners. Parabolas can match slopes but not curvature. <b>Cubics</b> are the lowest degree that can match value, slope <b>and</b> curvature at every join, so the curve looks smooth to the eye. Physically it is the shape a thin flexible ruler takes when bent through pins.</p>` },
       { q: 'Why are two extra conditions needed?', a: `
@@ -329,7 +329,7 @@
         ${eq(v('δ', 'i−1') + v('c', 'i−1') + ' + 2(' + v('δ', 'i−1') + ' + ' + v('δ', 'i') + ')' + v('c', 'i') + ' + ' + v('δ', 'i') + v('c', 'i+1') + ' = 3(' + fr(v('Δ', 'i'), v('δ', 'i')) + ' − ' + fr(v('Δ', 'i−1'), v('δ', 'i−1')) + ')')}
         <p>The right side is 3 × (change in slope of the data), so if the data lie on a line, all c\'s are 0 and the spline is that line.</p>` },
       { q: 'Natural, clamped, not-a-knot — which one?', a: `
-        <ul><li><b>Natural</b>: curvature 0 at both ends. Default when nothing is said.</li>
+        <ul><li><b>Natural</b>: curvature 0 at both ends. Use it when specified; two endpoint conditions must be supplied or chosen explicitly.</li>
         <li><b>Clamped</b>: the slopes at the two ends are given. Best if you know them.</li>
         <li><b>Parabolically terminated</b>: the end pieces are parabolas (${v('d', 1)} = ${v('d', 'n−1')} = 0).</li>
         <li><b>Not-a-knot</b>: the first two pieces are the same cubic (and the last two) — what MATLAB\'s spline uses.</li></ul>` },

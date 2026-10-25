@@ -421,7 +421,7 @@
         if (isNum(b, 0)) return num(1);
         if (isNum(b, 1)) return a;
         if (a.k === 'num' && b.k === 'num' && Number.isInteger(b.v) && b.v > 0 && b.v <= 12 && Number.isInteger(a.v)) return num(Math.pow(a.v, b.v));
-        if (a.k === '^' && a.b.k === 'num' && b.k === 'num') return pow(a.a, num(a.b.v * b.v));
+        // Do not flatten nested powers: (x^2)^0.5 is |x|, not x.
         return pow(a, b);
       }
     }
@@ -751,17 +751,23 @@
      1.1  Bisection — table rows i, a_i, f(a_i), c_i, f(c_i), b_i, f(b_i)
      ================================================================ */
   E.bisection = function (f, a, b, opt) {
+    if (!(isFinite(a) && isFinite(b) && a < b)) return { error: 'Use a finite interval with a < b.' };
     const tol = opt.tol, maxSteps = opt.steps || 200;
     let fa = f(a), fb = f(b);
     if (!isFinite(fa) || !isFinite(fb)) return { error: 'f is undefined at an endpoint. Pick a different interval.' };
-    if (fa === 0) return { rows: [], root: a, exactAt: 'a', fa, fb };
-    if (fb === 0) return { rows: [], root: b, exactAt: 'b', fa, fb };
+    const initial = { a0: a, b0: b, fa0: fa, fb0: fb };
+    if (fa === 0 || fb === 0) {
+      const root = fa === 0 ? a : b;
+      return Object.assign(initial, { rows: [], root, exact: true, exactAt: fa === 0 ? 'a' : 'b', finalA: root, finalB: root, errBound: 0 });
+    }
     if (Math.sign(fa) === Math.sign(fb)) return { error: 'f(a) and f(b) have the same sign, so a root is not guaranteed in [a, b]. Pick an interval where the signs are different.', fa, fb, sameSign: true };
     const rows = [];
     const a0 = a, b0 = b, fa0 = fa, fb0 = fb;
     for (let i = 0; i < maxSteps; i++) {
       if (tol !== undefined && (b - a) / 2 <= tol) break;
       const c = (a + b) / 2, fc = f(c);
+      if (!isFinite(fc)) return { error: 'f is undefined at the midpoint x = ' + c + '. Bisection requires a continuous function throughout the interval.', rows };
+      if (c === a || c === b) break; // no further representable midpoint
       const row = { i, a, fa, c, fc, b, fb, half: (b - a) / 2 };
       if (fc === 0) { row.keep = 'exact'; rows.push(row); return { rows, root: c, exact: true, a0, b0, fa0, fb0 }; }
       if (Math.sign(fa) !== Math.sign(fc)) { row.keep = 'left'; b = c; fb = fc; }
@@ -807,6 +813,7 @@
     for (let i = 0; i < max; i++) {
       const fx = f(x), dfx = df(x);
       const row = { i, x, fx, dfx };
+      if (fx === 0) { row.exact = true; row.next = x; row.diff = 0; rows.push(row); stop = 'exact'; break; }
       if (!isFinite(fx) || !isFinite(dfx)) { row.bad = true; rows.push(row); stop = 'undefined'; break; }
       if (dfx === 0) { row.zeroSlope = true; rows.push(row); stop = 'zeroSlope'; break; }
       row.next = x - fx / dfx;
@@ -829,6 +836,8 @@
     let stop = 'steps';
     for (let i = 1; i <= max; i++) {
       const row = { i, xp, x, fp, fx };
+      if (!isFinite(fp) || !isFinite(fx)) { row.bad = true; rows.push(row); stop = 'undefined'; break; }
+      if (fx === 0) { row.exact = true; row.next = x; row.diff = 0; rows.push(row); stop = 'exact'; break; }
       if (fx === fp) { row.flat = true; rows.push(row); stop = 'flat'; break; }
       row.next = x - (fx * (x - xp)) / (fx - fp);
       row.diff = Math.abs(row.next - x);
@@ -841,12 +850,14 @@
   };
   E.falsePosition = function (f, a, b, opt) {
     let fa = f(a), fb = f(b);
+    if (!(isFinite(a) && isFinite(b) && a < b && isFinite(fa) && isFinite(fb))) return { error: 'Use a < b with finite function values at both endpoints.' };
     if (Math.sign(fa) === Math.sign(fb)) return { error: 'f(a) and f(b) must have different signs for False Position.' };
     const rows = [];
     const max = opt.steps || 50;
     let prev = null, stop = 'steps';
     for (let i = 0; i < max; i++) {
       const c = (b * fa - a * fb) / (fa - fb), fc = f(c);
+      if (!isFinite(c) || !isFinite(fc)) return { error: 'The new function value is undefined. False Position requires a continuous function throughout the interval.' };
       const row = { i, a, fa, b, fb, c, fc, diff: prev === null ? null : Math.abs(c - prev) };
       if (fc === 0) { row.keep = 'exact'; rows.push(row); stop = 'exact'; break; }
       if (Math.sign(fa) !== Math.sign(fc)) { row.keep = 'left'; b = c; fb = fc; }
@@ -941,12 +952,75 @@
   E.factorial = (n) => { let r = 1; for (let i = 2; i <= n; i++) r *= i; return r; };
   E.maxAbsOn = function (f, a, b, samples) {
     const N = samples || 4000;
-    let best = 0, at = a;
+    let best = 0, at = a, undefinedValues = false;
     for (let i = 0; i <= N; i++) {
       const x = a + ((b - a) * i) / N, v = Math.abs(f(x));
-      if (isFinite(v) && v > best) { best = v; at = x; }
+      if (!isFinite(v)) undefinedValues = true;
+      else if (v > best) { best = v; at = x; }
     }
-    return { max: best, at };
+    return { max: best, at, undefinedValues };
+  };
+
+  /* Conservative interval arithmetic for derivative bounds. Unsupported or
+     possibly undefined expressions return null; sampling is never a proof. */
+  E.absBound = function (node, a, b) {
+    if (!(isFinite(a) && isFinite(b) && a <= b)) return null;
+    const range = (lo, hi) => {
+      if (!isFinite(lo) || !isFinite(hi)) return null;
+      const pad = 8 * Number.EPSILON * Math.max(Math.abs(lo), Math.abs(hi));
+      return [lo - pad, hi + pad];
+    };
+    const visit = (n) => {
+      if (n.k === 'num') return [n.v, n.v];
+      if (n.k === 'c') return [CONST[n.n], CONST[n.n]];
+      if (n.k === 'x') return [a, b];
+      const u = n.a && visit(n.a);
+      if (!u) return null;
+      if (n.k === 'neg') return [-u[1], -u[0]];
+      if (n.k === 'fn') {
+        const [lo, hi] = u;
+        switch (n.n) {
+          case 'sin': case 'cos': return [-1, 1];
+          case 'exp': return range(Math.exp(lo), Math.exp(hi));
+          case 'ln': case 'log': return lo > 0 ? range(FN[n.n](lo), FN[n.n](hi)) : null;
+          case 'sqrt': return lo >= 0 ? range(Math.sqrt(lo), Math.sqrt(hi)) : null;
+          case 'cbrt': case 'sinh': case 'tanh': case 'atan': return range(FN[n.n](lo), FN[n.n](hi));
+          case 'asin': return lo >= -1 && hi <= 1 ? range(Math.asin(lo), Math.asin(hi)) : null;
+          case 'acos': return lo >= -1 && hi <= 1 ? range(Math.acos(hi), Math.acos(lo)) : null;
+          case 'abs': return [lo <= 0 && hi >= 0 ? 0 : Math.min(Math.abs(lo), Math.abs(hi)), Math.max(Math.abs(lo), Math.abs(hi))];
+          case 'cosh': return range(lo <= 0 && hi >= 0 ? 1 : Math.min(Math.cosh(lo), Math.cosh(hi)), Math.max(Math.cosh(lo), Math.cosh(hi)));
+          default: return null;
+        }
+      }
+      const v = n.b && visit(n.b);
+      if (!v) return null;
+      if (n.k === '+') return range(u[0] + v[0], u[1] + v[1]);
+      if (n.k === '-') return range(u[0] - v[1], u[1] - v[0]);
+      if (n.k === '*' || n.k === '/') {
+        if (n.k === '/' && v[0] <= 0 && v[1] >= 0) return null;
+        const w = n.k === '/' ? [1 / v[1], 1 / v[0]] : v;
+        const products = [u[0] * w[0], u[0] * w[1], u[1] * w[0], u[1] * w[1]];
+        return range(Math.min(...products), Math.max(...products));
+      }
+      if (n.k === '^' && !hasX(n.b)) {
+        const p = compileNode(n.b)(0);
+        if (!isFinite(p)) return null;
+        if (p === 0) return [1, 1];
+        if (p < 0 && u[0] <= 0 && u[1] >= 0) return null;
+        if (!Number.isInteger(p) && u[0] < 0) return null;
+        const ends = [Math.pow(u[0], p), Math.pow(u[1], p)];
+        const lo = p > 0 && u[0] <= 0 && u[1] >= 0 ? 0 : Math.min(...ends);
+        // Odd integer powers remain monotone across zero.
+        return range(Number.isInteger(p) && p % 2 !== 0 ? Math.min(...ends) : lo, Math.max(...ends));
+      }
+      if (n.k === '^' && u[0] > 0) {
+        const corners = [Math.pow(u[0], v[0]), Math.pow(u[0], v[1]), Math.pow(u[1], v[0]), Math.pow(u[1], v[1])];
+        return range(Math.min(...corners), Math.max(...corners));
+      }
+      return null;
+    };
+    const r = visit(node);
+    return r ? { max: Math.max(Math.abs(r[0]), Math.abs(r[1])), method: 'interval' } : null;
   };
   E.chebNodes = function (n, a, b) {
     const out = [];
@@ -1043,12 +1117,17 @@
     };
   };
   E.integrate = function (f, a, b, n, method) {
+    if (!(isFinite(a) && isFinite(b) && a !== b)) return { error: 'Use two different finite integration limits.' };
+    if (!Number.isInteger(n) || n < 1 || n > 10000) return { error: 'The panel count must be a whole number from 1 to 10000.' };
+    if (!['trap', 'simpson', 'midpoint'].includes(method)) return { error: 'Choose Trapezoid, Simpson, or Midpoint.' };
+    if (method === 'simpson' && n % 2) return { error: 'Simpson\'s Rule needs an even number of panels.' };
     const h = (b - a) / n;
     const pts = [];
     if (method === 'midpoint') {
       let s = 0;
       for (let i = 0; i < n; i++) {
         const x = a + (i + 0.5) * h, y = f(x);
+        if (!isFinite(y)) return { error: 'f is undefined at x = ' + x + '. Check the function and limits.' };
         pts.push({ i, x, y, w: 1 });
         s += y;
       }
@@ -1056,6 +1135,7 @@
     }
     for (let i = 0; i <= n; i++) {
       const x = a + i * h, y = f(x);
+      if (!isFinite(y)) return { error: 'f is undefined at x = ' + x + '. Check the function and limits.' };
       let w;
       if (method === 'trap') w = i === 0 || i === n ? 1 : 2;
       else w = i === 0 || i === n ? 1 : i % 2 === 1 ? 4 : 2;
@@ -1067,15 +1147,24 @@
   };
   /* High-accuracy reference value (adaptive Simpson). */
   E.integralRef = function (f, a, b) {
+    let evaluations = 0;
+    const value = (x) => {
+      if (++evaluations > 20000) throw new Error('The reference integral did not converge within the calculation limit.');
+      const y = f(x);
+      if (!isFinite(y)) throw new Error('The reference integral is undefined at x = ' + x + '.');
+      return y;
+    };
     function simp(a, b, fa, fm, fb) { return ((b - a) / 6) * (fa + 4 * fm + fb); }
     function rec(a, b, fa, fm, fb, whole, eps, depth) {
       const m = (a + b) / 2, lm = (a + m) / 2, rm = (m + b) / 2;
-      const flm = f(lm), frm = f(rm);
+      const flm = value(lm), frm = value(rm);
       const left = simp(a, m, fa, flm, fm), right = simp(m, b, fm, frm, fb);
-      if (depth > 40 || Math.abs(left + right - whole) <= 15 * eps) return left + right + (left + right - whole) / 15;
+      if (!isFinite(left + right)) throw new Error('The reference integral overflowed.');
+      if (Math.abs(left + right - whole) <= 15 * eps) return left + right + (left + right - whole) / 15;
+      if (depth >= 20) throw new Error('A reliable reference value is unavailable for this function and interval.');
       return rec(a, m, fa, flm, fm, left, eps / 2, depth + 1) + rec(m, b, fm, frm, fb, right, eps / 2, depth + 1);
     }
-    const fa = f(a), fb = f(b), fm = f((a + b) / 2);
+    const fa = value(a), fb = value(b), fm = value((a + b) / 2);
     return rec(a, b, fa, fm, fb, simp(a, b, fa, fm, fb), 1e-12, 0);
   };
 

@@ -5,6 +5,6 @@
   "description": "Offline study app for Sauer's Numerical Analysis: lessons, worked examples, a homework solver and self-checking practice.",
   "scripts": {
     "build": "node build.js",
-    "test": "node tests/engine.test.js"
+    "test": "node tests/engine.test.js && node tests/learning.test.js"
   }
 }

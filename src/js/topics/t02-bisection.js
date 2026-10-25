@@ -21,6 +21,10 @@
     const rows = res.rows;
     const detail = Math.min(rows.length, o.detail === undefined ? 4 : o.detail);
     const steps = [];
+    if (res.exactAt) return {
+      steps: [{ title: 'An endpoint is already a root', lines: ['<i>f</i>(' + n(res.root) + ') = 0'], note: 'No bisection steps are needed.' }],
+      answer: ['root = ' + nf(res.root) + ' (exact)'],
+    };
     steps.push({
       title: 'Check that a root is trapped in [' + n(res.a0) + ', ' + n(res.b0) + ']',
       lines: [
@@ -65,7 +69,7 @@
       steps,
       answer: res.exact ? ['root = ' + nf(last.c) + ' (exact)'] : [
         'root ≈ ' + M.fr(n(res.finalA) + ' + ' + n(res.finalB), '2') + ' = <b>' + nf(res.root) + '</b>',
-        '<span class="small">error &lt; ' + M.fr(n(res.b0 - res.a0), '2<sup>' + (rows.length + 1) + '</sup>') + ' = ' + E.fmtE(bound, 3) + ' &nbsp;·&nbsp; last midpoint ' + M.v('c', last.i) + ' = ' + nf(last.c) + '</span>',
+        '<span class="small">error ≤ ' + E.fmtE(res.errBound, 3) + (last ? ' &nbsp;·&nbsp; last midpoint ' + M.v('c', last.i) + ' = ' + nf(last.c) : ' · the initial interval already meets the tolerance') + '</span>',
       ],
     };
   }
@@ -73,6 +77,7 @@
   /* ---------- animation ---------- */
   function bisectWalk(parent, o) {
     const { fc, res } = o;
+    if (!res.rows.length) { parent.appendChild(UI.callout('idea', res.exactAt ? 'Endpoint root' : 'No further steps needed', '<p>root ≈ ' + nf(res.root) + '</p>')); return; }
     const f = fc.f;
     const rows = res.rows;
     const N = rows.length + 2;
@@ -147,13 +152,13 @@
 
     lessons: [
       { title: 'The idea', build(el) {
-        el.appendChild(h('p', { class: 'big', html: 'If <i>f</i>(<i>a</i>) and <i>f</i>(<i>b</i>) have <b>opposite signs</b>, the graph must cross zero somewhere between <i>a</i> and <i>b</i>.' }));
+        el.appendChild(h('p', { class: 'big', html: 'If <i>f</i> is <b>continuous on [a, b]</b> and its endpoint values have <b>opposite signs</b>, its graph must cross zero somewhere between <i>a</i> and <i>b</i>.' }));
         el.appendChild(h('p', { html: 'So: cut the interval in half, look at the sign in the middle, and keep the half where the signs still disagree. Repeat. It is the "guess my number" game — slow, but it <b>never fails</b> once the root is trapped.' }));
         el.appendChild(UI.callout('good', 'The one rule', '<p class="big" style="margin:0"><b><i>c</i> replaces the endpoint that has the same sign as <i>f</i>(<i>c</i>).</b></p>'));
       } },
       { title: 'The steps', build(el) {
         el.appendChild(UI.recipe([
-          '<b>Check</b> that <i>f</i>(<i>a</i>) and <i>f</i>(<i>b</i>) have opposite signs.',
+          '<b>Check</b> continuity throughout [<i>a</i>, <i>b</i>] and opposite signs at the endpoints.',
           '<b>Midpoint:</b> <i>c</i> = (<i>a</i> + <i>b</i>)/2.',
           '<b>Evaluate</b> <i>f</i>(<i>c</i>). Only its sign matters.',
           '<b>Replace</b> the endpoint with the same sign as <i>f</i>(<i>c</i>).',
@@ -191,7 +196,7 @@
       const fin = UI.exprInput({ label: '<i>f</i>(<i>x</i>) =', value: 'x^3 + x - 1', prefix: '<i>f</i>(<i>x</i>) = ', wide: true });
       const ain = UI.textInput({ label: '<i>a</i> (left end)', value: '0' });
       const bin = UI.textInput({ label: '<i>b</i> (right end)', value: '1' });
-      const stop = UI.stopRule({ mode: 'steps', steps: 5, places: 4 });
+      const stop = UI.stopRule({ mode: 'steps', steps: 5, places: 4, errorBound: true });
       const out = h('div');
       const scanOut = h('div');
       el.appendChild(h('div', { class: 'card' },

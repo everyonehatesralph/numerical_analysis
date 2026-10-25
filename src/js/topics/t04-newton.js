@@ -19,6 +19,8 @@
     ];
     for (let k = 0; k < detail; k++) {
       const r = rows[k];
+      if (r.exact) { steps.push({ title: 'An iterate is already a root', lines: ['<i>f</i>(' + n(r.x) + ') = 0'], note: 'Stop here; no division by the derivative is needed.' }); break; }
+      if (r.bad) { steps.push({ title: 'The iteration is undefined here', text: 'The function or derivative is undefined at this x. Choose a starting point inside the function domain.' }); break; }
       if (r.zeroSlope) { steps.push({ title: 'Iteration ' + (k + 1) + ': problem', lines: ['<i>f</i>′(' + n(r.x) + ') = 0'], note: 'A flat tangent never meets the <i>x</i>-axis. Pick another starting point.' }); break; }
       steps.push({
         title: 'Iteration ' + (k + 1) + ': find ' + M.v('x', k + 1),
@@ -40,7 +42,7 @@
     const last = rows[rows.length - 1];
     return {
       steps,
-      answer: res.stop === 'zeroSlope' ? ['Newton stops: <i>f</i>′ = 0 at ' + n(last.x)] : res.stop === 'blowup' ? ['The iterates run away — choose a better ' + M.v('x', 0) + '.']
+      answer: res.stop === 'undefined' ? ['No root estimate is certified: the function or derivative is undefined at this iterate.'] : res.stop === 'zeroSlope' ? ['Newton stops: <i>f</i>′ = 0 at ' + n(last.x)] : res.stop === 'blowup' ? ['The iterates run away — choose a better ' + M.v('x', 0) + '.']
         : ['root ≈ ' + M.v('x', rows.length) + ' = <b>' + nf(res.last) + '</b>', '<span class="small">check: <i>f</i>(' + n(res.last) + ') = ' + E.fmtE(fc.f(res.last), 3) + '</span>'],
     };
   }

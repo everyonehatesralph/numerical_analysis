@@ -24,16 +24,20 @@
     const { n, a, b, aL, bL, fc, maxValue, maxWhy } = o;
     const factor = Math.pow((b - a) / 2, n) / Math.pow(2, n - 1);
     const d = E.nthDerivative(fc.node, n);
-    const mx = maxValue !== undefined ? maxValue : E.maxAbsOn(d.f, a, b).max;
+    const proof = maxValue !== undefined ? { max: maxValue } : E.absBound(d.node, a, b);
+    const sampled = proof || E.maxAbsOn(d.f, a, b);
+    if (sampled.undefinedValues) throw new Error('The required derivative is undefined on this interval.');
+    const mx = sampled.max;
+    const guaranteed = !!proof;
     const bound = (factor / E.factorial(n)) * mx;
     return {
       steps: [
         { title: 'Number of nodes', lines: [o.deg !== undefined ? 'degree ' + o.deg + ' → <i>n</i> = ' + n + ' nodes' : '<i>n</i> = ' + n] },
         { title: 'Largest value of the product (Chebyshev\'s theorem)', lines: ['max |(<i>x</i> − ' + M.v('x', 1) + ')⋯(<i>x</i> − ' + M.v('x', n) + ')| = ' + M.fr('((<i>b</i> − <i>a</i>)/2)<sup><i>n</i></sup>', '2<sup><i>n</i>−1</sup>') + ' = ' + M.fr('(' + s6((b - a) / 2) + ')<sup>' + n + '</sup>', '2<sup>' + (n - 1) + '</sup>') + ' = ' + M.res(E.fmtE(factor, 4))], note: 'On [' + aL + ', ' + bL + '].' },
-        { title: 'Largest derivative', lines: ['<i>f</i><sup>(' + n + ')</sup>(<i>x</i>) = ' + d.html, 'max |<i>f</i><sup>(' + n + ')</sup>| = ' + M.res(s6(mx))], note: maxWhy || null },
-        { title: 'Put it together', lines: ['|<i>f</i> − <i>P</i>| ≤ ' + M.fr(E.fmtE(factor, 4), n + '!') + ' × ' + s6(mx) + ' = ' + M.fr(E.fmtE(factor, 4), String(E.factorial(n))) + ' × ' + s6(mx) + ' = ' + M.res(E.fmtE(bound, 4))] },
+        { title: guaranteed ? 'An upper bound for the derivative' : 'Sampled derivative estimate', lines: ['<i>f</i><sup>(' + n + ')</sup>(<i>x</i>) = ' + d.html, (guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>| ≤ ' : 'sampled max ≈ ') + M.res(E.fmtE(mx, 7))], note: maxWhy || (guaranteed ? 'Conservative interval arithmetic; the derivative must exist throughout the interval.' : 'Sampling can miss peaks. This is not a guaranteed upper bound.') },
+        { title: guaranteed ? 'Put it together' : 'Estimated error scale', lines: [(guaranteed ? '|<i>f</i> − <i>P</i>| ≤ ' : 'estimated scale ≈ ') + M.fr(E.fmtE(factor, 4), String(E.factorial(n))) + ' × ' + E.fmtE(mx, 7) + ' = ' + M.res(E.fmtE(bound, 4))] },
       ],
-      answer: ['|<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>)| ≤ ' + E.fmtE(bound, 4)],
+      answer: [(guaranteed ? '|<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>)| ≤ ' : 'Estimated error scale (not guaranteed): ') + E.fmtE(bound, 4)],
     };
   }
   function tBoard(n, t) {
@@ -144,7 +148,8 @@
         if (fc) {
           const p2 = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Error bound' }));
           out.appendChild(p2);
-          UI.board(p2, boundBoard({ n, a, b, aL: ain.get(), bL: bin.get(), fc }), { reveal: 'all' });
+          try { UI.board(p2, boundBoard({ n, a, b, aL: ain.get(), bL: bin.get(), fc }), { reveal: 'all' }); }
+          catch (e) { p2.appendChild(UI.error(e.message)); }
         }
       }
       run();

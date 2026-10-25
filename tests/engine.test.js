@@ -145,5 +145,41 @@ const si = E.integrate((x) => x * x * x, 0, 2, 2, 'simpson');
 near('simpson exact on cubic', si.value, 4, 1e-12);
 near('reference integral', E.integralRef(Math.sin, 0, Math.PI), 2, 1e-10);
 
+// ---- regression: equivalent powers keep their real domains ----
+near('decimal square-root power derivative on negative x', E.derivative(E.compile('(x^2)^0.5').node).f(-2), -1, 1e-12);
+near('fractional square-root power derivative on negative x', E.derivative(E.compile('(x^2)^(1/2)').node).f(-2), -1, 1e-12);
+near('nested power derivative on positive x', E.derivative(E.compile('(x^2)^0.5').node).f(2), 1, 1e-12);
+
+// ---- regression: bounds must cover peaks between sample locations ----
+const rapid = E.compile('sin(8000*pi*x)'), rapidD = E.nthDerivative(rapid.node, 2);
+const rapidBound = E.absBound(rapidD.node, 0, 1);
+eq('rapid oscillation has conservative bound', rapidBound.max >= (8000 * Math.PI) ** 2, true);
+eq('singular derivative has no interval bound', E.absBound(E.derivative(E.compile('ln(x)').node).node, -1, 1), null);
+eq('unsupported tan has no claimed bound', E.absBound(E.compile('tan(x)').node, 0, 1), null);
+eq('sampling reports undefined values', E.maxAbsOn(Math.log, -1, 1).undefinedValues, true);
+for (const s of ['x^2', 'x^3', 'e^(-x)', '1/(1+x^2)', 'cos(x)*x^2', 'x^(-2)']) {
+  const c = E.compile(s), bnd = E.absBound(c.node, 1, 3);
+  eq('finite bound ' + s, !!bnd, true);
+  eq('bound covers sampled values ' + s, !!bnd && Array.from({ length: 101 }, (_, k) => Math.abs(c.f(1 + k / 50))).every((v) => v <= bnd.max), true);
+}
+
+// ---- regression: domain failures and invalid panel counts fail promptly ----
+eq('bisection rejects undefined midpoint', !!E.bisection((x) => 1 / x, -1, 1, { steps: 6 }).error, true);
+const endpoint = E.bisection((x) => x - 1, 1, 2, { steps: 4 });
+eq('endpoint root is exact', endpoint.exact, true);
+eq('endpoint retains initial interval', endpoint.a0, 1);
+eq('endpoint needs no iterations', endpoint.rows.length, 0);
+near('endpoint root', endpoint.root, 1);
+eq('false position rejects singular value', !!E.falsePosition((x) => 1 / x, -1, 1, { steps: 4 }).error, true);
+eq('Newton stops at an exact multiple root', E.newton((x) => x * x, (x) => 2 * x, 0, { steps: 4 }).stop, 'exact');
+eq('secant rejects undefined starts', E.secant(Math.log, -1, 1, { steps: 4 }).stop, 'undefined');
+eq('Simpson rejects odd n', !!E.integrate((x) => x * x, 0, 1, 3, 'simpson').error, true);
+eq('integration rejects fractional n', !!E.integrate(Math.exp, 0, 1, 2.5, 'trap').error, true);
+eq('integration rejects nonfinite values', !!E.integrate(Math.log, 0, 1, 4, 'trap').error, true);
+let undefinedCalls = 0, referenceStopped = false;
+try { E.integralRef(() => { undefinedCalls++; return NaN; }, 0, 1); } catch (e) { referenceStopped = /undefined/.test(e.message); }
+eq('undefined reference integral gives clear failure', referenceStopped, true);
+eq('undefined reference integral stops immediately', undefinedCalls, 1);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

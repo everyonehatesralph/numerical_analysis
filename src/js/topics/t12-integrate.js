@@ -17,7 +17,9 @@
   function integrateBoard(fc, a, b, n, method, o) {
     o = o || {};
     const res = E.integrate(fc.f, a, b, n, method);
-    const exact = E.integralRef(fc.f, a, b);
+    if (res.error) throw new Error(res.error);
+    let exact = null, referenceError = '';
+    try { exact = E.integralRef(fc.f, a, b); } catch (e) { referenceError = e.message; }
     const aL = o.aL || n6(a), bL = o.bL || n6(b);
     const steps = [
       { title: 'Write the rule', lines: ['∫ ≈ ' + RULE[method]], note: method === 'simpson' ? '<i>n</i> must be even. Weights: 1, 4, 2, 4, …, 4, 1.' : method === 'trap' ? 'Weights: 1 at the ends, 2 inside.' : 'Use the middle of each panel.' },
@@ -31,7 +33,9 @@
       { title: 'Add the weighted values', lines: ['sum = ' + res.pts.map((p) => (p.w === 1 ? '' : p.w + '·') + M.paren(n6(p.y))).join(' + ') + ' = ' + M.res(nf(res.sum))] },
       { title: 'Multiply', lines: [(method === 'trap' ? M.fr('<i>h</i>', '2') : method === 'simpson' ? M.fr('<i>h</i>', '3') : '<i>h</i>') + ' × sum = ' + nf(res.factor) + ' × ' + nf(res.sum) + ' = ' + M.res(nf(res.value))] },
     ];
-    if (o.compare !== false) steps.push({ title: 'How good is it?', lines: ['true value ≈ ' + nf(exact) + (o.exactLabel ? ' (' + o.exactLabel + ')' : ''), 'error ≈ ' + E.fmtE(Math.abs(res.value - exact), 3)] });
+    if (o.compare !== false) steps.push(exact !== null
+      ? { title: 'Compare with a numerical reference', lines: ['reference value ≈ ' + nf(exact) + (o.exactLabel ? ' (' + o.exactLabel + ')' : ''), 'estimated error ≈ ' + E.fmtE(Math.abs(res.value - exact), 3)] }
+      : { title: 'Reference comparison unavailable', text: referenceError, note: 'The rule above used only its required sample points. A reliable true-error comparison is unavailable; check the domain and any improper endpoints.' });
     return { steps, answer: ['∫<sub>' + aL + '</sub><sup>' + bL + '</sup> <i>f</i>(<i>x</i>) d<i>x</i> ≈ <b>' + nf(res.value) + '</b>'] };
   }
 
@@ -125,13 +129,14 @@
         out.innerHTML = '';
         const fc = fin.get();
         if (!fc) { out.appendChild(UI.error('I can\'t read f(x) yet.')); return; }
-        const a = E.evalNumber(ain.get()), b = E.evalNumber(bin.get()), n = Math.round(E.evalNumber(nin.get()));
+        const a = E.evalNumber(ain.get()), b = E.evalNumber(bin.get()), n = E.evalNumber(nin.get());
         if (!isFinite(a) || !isFinite(b) || a === b) { out.appendChild(UI.error('Need two different numbers a and b.')); return; }
-        if (!(n >= 1 && n <= 200)) { out.appendChild(UI.error('n must be from 1 to 200.')); return; }
+        if (!(Number.isInteger(n) && n >= 1 && n <= 200)) { out.appendChild(UI.error('n must be a whole number from 1 to 200.')); return; }
         if (method === 'simpson' && n % 2) { out.appendChild(UI.error('Simpson\'s Rule needs an even number of panels. Try n = ' + (n + 1) + '.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, integrateBoard(fc, a, b, n, method, { aL: ain.get(), bL: bin.get(), trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
+        try { UI.board(paper, integrateBoard(fc, a, b, n, method, { aL: ain.get(), bL: bin.get(), trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
+        catch (e) { out.innerHTML = ''; out.appendChild(UI.error(e.message)); return; }
         UI.watch(paper, (bx) => integratePlot(bx, fc, a, b, n, method), 'Show the picture');
       }
       run();
