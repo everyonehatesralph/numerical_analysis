@@ -2,9 +2,11 @@
 
 An offline study app for Sauer, *Numerical Analysis* (2nd ed.).
 
-**To use it:** double-click `dist/Numerical-Methods-Reviewer.html`. It opens in your browser and works with no internet. Your progress is saved in that browser on that computer.
+**On any device:** open the website (deployed on Vercel from this repo). On a phone, use the browser menu → *Add to Home screen*; after the first visit it works offline. Add `#ndd` to the link to jump straight to divided differences.
 
-**On your phone:** open the private online copy at https://claude.ai/artifact/VFoxBciHmgFAaoNUUUgoik while signed in to claude.ai (needs internet). Add `#ndd` to the link to jump straight to divided differences. Phone progress is saved separately from the laptop's; use Settings → backup code to move it.
+**On this laptop, no internet:** run `npm run build`, then double-click `dist/Numerical-Methods-Reviewer.html`.
+
+Progress is saved separately on each device and browser; use Settings → backup code to move it.
 
 ## Topics
 
@@ -26,5 +28,7 @@ There is also a formula sheet, a timed exam drill, calculator tips, and a text-s
 ## For developers
 
 - `src/` holds the app (plain HTML/CSS/JS, no libraries). Open `src/index.html` through any local web server while editing.
-- `node build.js` inlines everything into `dist/Numerical-Methods-Reviewer.html` (offline) and `dist/artifact/Numerical-Methods-Reviewer.html` (the claude.ai copy; republish it to the URL above to update the phone version).
-- `node tests/engine.test.js` checks the math engine against the book's worked examples.
+- `npm run build` (`node build.js`) writes three outputs into `dist/`: the offline single file, `artifact/` (the claude.ai copy) and `web/` (the website, with an offline cache and app icons).
+- `npm test` checks the math engine against the book's worked examples.
+- **Deploying:** Vercel builds from `main` using `vercel.json` (`node build.js`, publishes `dist/web`). Push to `main` and the site updates.
+- `tools/make-icons.py` redraws the app icons (needs Python with Pillow).

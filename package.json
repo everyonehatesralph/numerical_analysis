@@ -1,0 +1,10 @@
+{
+  "name": "numerical-methods-reviewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline study app for Sauer's Numerical Analysis: lessons, worked examples, a homework solver and self-checking practice.",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node tests/engine.test.js"
+  }
+}

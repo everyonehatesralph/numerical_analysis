@@ -1,0 +1,6 @@
+# built by `node build.js` (Vercel builds its own copy)
+dist/
+node_modules/
+.vercel/
+.claude/
+__pycache__/
