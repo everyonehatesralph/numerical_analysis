@@ -7,7 +7,7 @@
   const UNITS = [
     ['prelim', 'Prelim'],
     ['midterm', 'Midterm'],
-    ['finals', 'Finals preview'],
+    ['finals', 'After midterm (Finals)'],
   ];
   NM.UNITS = UNITS;
   NM.unitName = (u) => (UNITS.find((x) => x[0] === u) || [u, u])[1];

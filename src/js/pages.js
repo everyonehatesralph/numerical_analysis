@@ -33,7 +33,7 @@
       h('div', { class: 'stat' }, h('b', { text: totalClean }), h('span', { text: 'solved on your own' })),
       h('div', { class: 'stat' }, h('b', { text: NM.topics.filter((t) => prog.level(t.id) > 0).length + '/' + NM.topics.length }), h('span', { text: 'topics started' }))));
     NM.UNITS.forEach(([u, name]) => {
-      el.appendChild(UI.section(name, u === 'finals' ? 'study ahead' : u === 'midterm' ? 'now' : 'review'));
+      el.appendChild(UI.section(name, u === 'finals' ? 'on the final' : u === 'midterm' ? 'now' : 'review'));
       el.appendChild(h('div', { class: 'trow-list' }, NM.topics.filter((t) => t.unit === u).map((t) =>
         h('a', { class: 'trow' + (t.id === NM.CURRENT ? ' current' : ''), href: '#/t/' + t.id + '/learn' },
           h('span', { class: 'tn', text: t.num }),
@@ -56,9 +56,9 @@
     el.appendChild(UI.section('Order until the final'));
     const order = [
       ['ndd', 'Your class is here. Master the triangle first.'], ['lagrange', 'Same answer as divided differences — use one to check the other.'],
-      ['horner', 'Short; needed to evaluate Newton\'s form.'], ['interp-error', 'Usually right after divided differences.'],
-      ['chebyshev', 'The next section.'], ['spline', 'Likely on the final if your class reaches it.'],
-      ['diff', 'Only if your teacher includes Chapter 5.'], ['integrate', 'Only if your teacher includes Chapter 5.'],
+      ['horner', 'Short; needed to evaluate Newton\'s form.'], ['interp-error', 'First topic after the midterm (§3.2).'],
+      ['chebyshev', 'After midterm (§3.3).'], ['spline', 'After midterm (§3.4).'],
+      ['diff', 'After midterm (§5.1).'], ['integrate', 'After midterm (§5.2).'],
     ];
     el.appendChild(h('div', { class: 'trow-list' }, order.map(([id, why], k) => {
       const t = NM.topic(id);

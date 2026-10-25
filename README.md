@@ -14,7 +14,7 @@ Progress is saved separately on each device and browser; use Settings → backup
 |---|---|
 | Prelim | 1 Evaluating a polynomial (nested multiplication) · 2 Bisection · 3 Fixed-point iteration · 4 Newton's method · 5 Secant / false position |
 | Midterm | 6 Lagrange interpolation · 7 Newton's divided differences |
-| Finals preview | 8 Interpolation error · 9 Chebyshev interpolation · 10 Cubic splines · 11 Numerical differentiation · 12 Trapezoid / Simpson / Midpoint |
+| After midterm (Finals) | 8 Interpolation error · 9 Chebyshev interpolation · 10 Cubic splines · 11 Numerical differentiation · 12 Trapezoid / Simpson / Midpoint |
 
 Each topic has four sections:
 
