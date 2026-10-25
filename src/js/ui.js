@@ -52,7 +52,9 @@
     clear() { try { Object.keys(localStorage).filter((k) => k.startsWith(PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ } },
   });
 
-  UI.settings = Object.assign({ dp: 6, theme: 'light', size: 'normal' }, Store.get('settings', {}));
+  UI.settings = Object.assign({ dp: 6, theme: 'auto', size: 'normal' }, Store.get('settings', {}));
+  // v2: the theme follows the phone's light/dark setting unless the student picks one later
+  if (!UI.settings.v) { UI.settings.theme = 'auto'; UI.settings.v = 2; }
   UI.dp = () => UI.settings.dp;
   UI.saveSettings = () => Store.set('settings', UI.settings);
   UI.applySize = () => {
@@ -61,11 +63,45 @@
   };
   // A host page (like the claude.ai viewer) may set its own theme; "auto" gives that back.
   const HOST_THEME = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : null;
+  const DARK_MQ = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+  const PAGE_BG = { light: '#fbfbfa', dark: '#191919' };
+  UI.isDark = () => {
+    const a = document.documentElement.getAttribute('data-theme');
+    return a ? a === 'dark' : !!(DARK_MQ && DARK_MQ.matches);
+  };
   UI.applyTheme = () => {
     const t = UI.settings.theme, rootEl = document.documentElement;
     if (t !== 'auto') rootEl.setAttribute('data-theme', t);
     else if (HOST_THEME) rootEl.setAttribute('data-theme', HOST_THEME);
     else rootEl.removeAttribute('data-theme');
+    const mode = UI.isDark() ? 'dark' : 'light';
+    // the tab icon and the phone's status bar follow the theme too
+    const svgIcon = document.getElementById('favicon'), pngIcon = document.getElementById('favicon-png');
+    if (svgIcon) svgIcon.href = 'data:image/svg+xml,' + encodeURIComponent(UI.logo(LOGO_COLORS[mode]));
+    if (pngIcon) pngIcon.href = mode === 'dark' ? 'favicon-32-dark.png' : 'favicon-32.png';
+    const following = t === 'auto' && !HOST_THEME;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+      m.setAttribute('content', following ? PAGE_BG[/dark/.test(m.media) ? 'dark' : 'light'] : PAGE_BG[mode]);
+    });
+    // graphs are drawn on canvas, so they repaint with the new colours
+    document.querySelectorAll('canvas').forEach((cv) => cv._plot && cv._plot.render());
+  };
+  // flipping dark mode on the phone (Control Center, or sunset) restyles the open page in place
+  if (DARK_MQ && DARK_MQ.addEventListener) DARK_MQ.addEventListener('change', () => { if (UI.settings.theme === 'auto') UI.applyTheme(); });
+
+  /* ---------- logo: a smooth curve through three points, the last one yellow like a boxed answer ---------- */
+  const LOGO_COLORS = {
+    light: { tile: '#111111', ink: '#fbfbfa', hl: '#f2c94c' },
+    dark: { tile: '#ededec', ink: '#191919', hl: '#d4961f' },
+  };
+  // c = explicit colours (tab icon); without it, .logo in styles.css paints it in the page's theme colours
+  UI.logo = (c) => {
+    const a = (attrs) => (c ? ' ' + attrs : '');
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"' + (c ? '' : ' class="logo" aria-hidden="true"') + '>' +
+      '<rect width="64" height="64" rx="14"' + a('fill="' + (c && c.tile) + '"') + '/>' +
+      '<path d="M12 42C15 30 19 22 24 22S35 42 40 42S49 34 52 22" fill="none" stroke-width="3.8" stroke-linecap="round"' + a('stroke="' + (c && c.ink) + '"') + '/>' +
+      '<g' + a('fill="' + (c && c.ink) + '"') + '><circle cx="12" cy="42" r="4"/><circle cx="32" cy="32" r="4"/></g>' +
+      '<circle class="hl" cx="52" cy="22" r="5"' + a('fill="' + (c && c.hl) + '"') + '/></svg>';
   };
 
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };

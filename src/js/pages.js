@@ -197,7 +197,7 @@
   P.settings = (el) => {
     el.appendChild(h('h1', { text: 'Settings' }));
     const dp = UI.select({ label: 'Decimal places in answers', value: UI.settings.dp, options: [[4, '4'], [5, '5'], [6, '6 (default)'], [8, '8'], [10, '10']], onChange: (v) => { UI.settings.dp = +v; UI.saveSettings(); UI.toast('Saved'); } });
-    const th = UI.select({ label: 'Theme', value: UI.settings.theme, options: [['light', 'Light (easiest to read)'], ['dark', 'Dark'], ['auto', 'Match my device']], onChange: (v) => { UI.settings.theme = v; UI.saveSettings(); UI.applyTheme(); } });
+    const th = UI.select({ label: 'Theme', value: UI.settings.theme, options: [['auto', 'Match my phone (light or dark)'], ['light', 'Always light'], ['dark', 'Always dark']], onChange: (v) => { UI.settings.theme = v; UI.saveSettings(); UI.applyTheme(); } });
     const sz = UI.select({ label: 'Text size', value: UI.settings.size, options: [['normal', 'Normal'], ['large', 'Large'], ['xl', 'Extra large']], onChange: (v) => { UI.settings.size = v; UI.saveSettings(); UI.applySize(); } });
     el.appendChild(h('div', { class: 'card' }, h('div', { class: 'form-grid' }, dp.el, th.el, sz.el)));
     el.appendChild(h('h2', { text: 'Your progress' }));

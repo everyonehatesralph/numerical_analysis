@@ -24,6 +24,7 @@
       this.wrap = document.createElement('div');
       this.wrap.className = 'plot';
       this.canvas = document.createElement('canvas');
+      this.canvas._plot = this; // lets a theme change repaint every graph on the page
       this.canvas.setAttribute('role', 'img');
       this.canvas.setAttribute('aria-label', this.opts.label || 'Graph');
       this.wrap.appendChild(this.canvas);

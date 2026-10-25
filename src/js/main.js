@@ -122,7 +122,7 @@
   }
 
   function layout() {
-    const brand = h('a', { class: 'brand', href: '#/' }, h('span', { class: 'brand-mark', text: 'ƒ' }), h('span', null, h('b', { text: 'Numerical Methods' }), h('span', { text: 'Reviewer · works offline' })));
+    const brand = h('a', { class: 'brand', href: '#/' }, h('span', { class: 'brand-mark', html: UI.logo() }), h('span', null, h('b', { text: 'Numerical Methods' }), h('span', { text: 'Reviewer · works offline' })));
     side = h('aside', { class: 'side' }, brand, searchBox(), h('nav'));
     const menuBtn = h('button', { class: 'btn icon ghost menu-btn', type: 'button', 'aria-label': 'Open the topic list', html: ICON.menu });
     menuBtn.addEventListener('click', () => document.body.classList.toggle('nav-open'));
@@ -141,12 +141,13 @@
       route();
     });
     const themeBtn = h('button', { class: 'btn icon ghost', type: 'button', title: 'Light / dark', 'aria-label': 'Switch light or dark mode', html: ICON.theme });
+    // Each tap flips what you see. Landing back on the phone's own setting means "follow the phone" again.
     themeBtn.addEventListener('click', () => {
-      const order = ['light', 'dark', 'auto'];
-      UI.settings.theme = order[(order.indexOf(UI.settings.theme) + 1) % 3];
+      const want = UI.isDark() ? 'light' : 'dark';
+      const phone = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      UI.settings.theme = want === phone ? 'auto' : want;
       UI.saveSettings(); UI.applyTheme();
-      UI.toast('Theme: ' + { light: 'light', dark: 'dark', auto: 'match my device' }[UI.settings.theme]);
-      route();
+      UI.toast(UI.settings.theme === 'auto' ? 'Following your phone (' + want + ')' : (want === 'dark' ? 'Dark' : 'Light') + ' · tap again to follow your phone');
     });
     const top = h('header', { class: 'topbar' }, menuBtn, crumbs, findBtn, sizeBtn, themeBtn);
     content = h('main', { class: 'content', id: 'content', tabindex: '-1' });

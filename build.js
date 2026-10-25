@@ -48,7 +48,9 @@ const head = [
   '<meta name="apple-mobile-web-app-title" content="NumMethods">',
 ].join('\n');
 const register = '<script>if (\'serviceWorker\' in navigator) window.addEventListener(\'load\', function () { navigator.serviceWorker.register(\'sw.js\').catch(function () {}); });</script>';
-write('dist/web/index.html', offline.replace('</head>', head + '\n</head>').replace('</body>', register + '\n</body>'));
+// a PNG tab icon for browsers that skip SVG ones (placed first, so the others still prefer the SVG)
+const png = '<link rel="icon" id="favicon-png" type="image/png" sizes="32x32" href="favicon-32.png">\n';
+write('dist/web/index.html', offline.replace('<link rel="icon" id="favicon"', png + '<link rel="icon" id="favicon"').replace('</head>', head + '\n</head>').replace('</body>', register + '\n</body>'));
 write('dist/web/sw.js', fs.readFileSync(path.join(web, 'sw.js'), 'utf8').replace('__BUILD_ID__', Date.now().toString(36)));
-['manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'].forEach((f) => fs.copyFileSync(path.join(web, f), path.join(__dirname, 'dist', 'web', f)));
+['manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'favicon-32.png', 'favicon-32-dark.png'].forEach((f) => fs.copyFileSync(path.join(web, f), path.join(__dirname, 'dist', 'web', f)));
 console.log(files.length + ' scripts inlined; web icons and manifest copied');
