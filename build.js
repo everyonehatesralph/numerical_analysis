@@ -48,7 +48,16 @@ const head = [
   '<meta name="mobile-web-app-capable" content="yes">',
   '<meta name="apple-mobile-web-app-title" content="NumMethods">',
 ].join('\n');
-const register = '<script>if (\'serviceWorker\' in navigator) window.addEventListener(\'load\', function () { navigator.serviceWorker.register(\'sw.js\').catch(function () {}); });</script>';
+// Register the offline cache. When a new deploy takes over an open page, reload it once so the
+// new version shows at once. A home-screen app on iPhone is resumed rather than reopened, so it
+// also looks for an update each time it comes back to the screen.
+const register = '<script>if ("serviceWorker" in navigator) {' +
+  'var hadSW = !!navigator.serviceWorker.controller, reloaded = false;' +
+  'navigator.serviceWorker.addEventListener("controllerchange", function () { if (hadSW && !reloaded) { reloaded = true; location.reload(); } });' +
+  'window.addEventListener("load", function () { navigator.serviceWorker.register("sw.js").then(function (reg) {' +
+  'document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") reg.update().catch(function () {}); });' +
+  '}).catch(function () {}); });' +
+  '}</script>';
 // a PNG tab icon for browsers that skip SVG ones (placed first, so the others still prefer the SVG)
 const png = '<link rel="icon" id="favicon-png" type="image/png" sizes="32x32" href="favicon-32.png">\n';
 write('dist/web/index.html', offline.replace('<link rel="icon" id="favicon"', png + '<link rel="icon" id="favicon"').replace('</head>', head + '\n</head>').replace('</body>', register + '\n</body>'));
