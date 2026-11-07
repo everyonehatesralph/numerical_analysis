@@ -95,6 +95,83 @@
     return plot;
   };
 
+  /* ---------- arithmetic written out, for the detailed solutions (Lagrange, divided differences) ---------- */
+  const poly = (p, F) => E.poly.html(p, F, UI.dp());
+  const nb = (s) => s.replace(/ = /g, '&nbsp;=&nbsp;'); // keep one small calculation on one line
+  // "1 − (−1) = 2"
+  IP.subLine = (a, b, F) => nb(IP.v(a) + ' − ' + M.paren(IP.v(b)) + ' = ' + IP.v(F.sub(a, b)));
+  // running product, left to right: (2)(−2)(−4) = (−4)(−4) = 16
+  IP.productLine = (vals, F) => {
+    const br = (v) => '(' + IP.v(v) + ')';
+    if (vals.length === 1) return IP.v(vals[0]);
+    const out = [vals.map(br).join('')];
+    let acc = vals[0];
+    for (let k = 1; k < vals.length; k++) {
+      acc = F.mul(acc, vals[k]);
+      out.push(k < vals.length - 1 ? br(acc) + vals.slice(k + 1).map(br).join('') : IP.v(acc));
+    }
+    return out.join(' = ');
+  };
+  // nu/de = simplified; just nu/de when it is already in lowest terms
+  IP.divLine = (nu, de, F, highlight) => {
+    const q = F.div(nu, de), hl = (s) => (highlight ? M.res(s) : s);
+    const lowest = F.exact && nu.isInt() && de.isInt() && de.n > 1n && q.n === nu.n && q.d === de.n;
+    return lowest ? hl(M.fr(IP.v(nu), IP.v(de))) : M.fr(IP.v(nu), IP.v(de)) + ' = ' + hl(IP.v(q));
+  };
+  // a + b − c, with each sign written once
+  IP.sumHTML = (vals, F) => vals.map((v, k) => {
+    const neg = F.num(v) < 0, a = IP.v(neg ? F.neg(v) : v);
+    return k === 0 ? (neg ? '−' : '') + a : (neg ? ' − ' : ' + ') + a;
+  }).join('');
+  // p(x)·(x − r) = x(p) − r(p) = (x·p) + (−r·p) = result
+  IP.mulLinLine = (p, r, F) => {
+    const res = E.poly.mulLin(p, r, F), ph = poly(p, F);
+    const lone = p.length === 2 && F.isZero(p[0]) && F.isZero(F.sub(p[1], F.one())); // p is just x
+    const head = (lone ? '<i>x</i>' : '(' + ph + ')') + IP.factor(r, F);
+    if (F.isZero(r) || lone) return { line: head + ' = ' + poly(res, F), poly: res };
+    const minus = F.num(r) > 0;
+    const split = '<i>x</i>(' + ph + ')' + (minus ? ' − ' : ' + ') + IP.v(minus ? r : F.neg(r)) + '(' + ph + ')';
+    const parts = '(' + poly([F.zero()].concat(p), F) + ') + (' + poly(E.poly.scale(p, F.neg(r), F), F) + ')';
+    return { line: head + ' = ' + split + ' = ' + parts + ' = ' + poly(res, F), poly: res };
+  };
+  // multiply out (x − r1)(x − r2)⋯ one bracket at a time
+  IP.expandLines = (roots, F) => {
+    let p = E.poly.mulLin([F.one()], roots[0], F);
+    const lines = [];
+    for (let k = 1; k < roots.length; k++) { const m = IP.mulLinLine(p, roots[k], F); lines.push(m.line); p = m.poly; }
+    return { lines, poly: p };
+  };
+  // one row per polynomial, one column per power of x, and the column totals
+  IP.collectTable = (rows, F) => {
+    const deg = Math.max(...rows.map((r) => r.poly.length)) - 1;
+    const pows = Array.from({ length: deg + 1 }, (_, k) => deg - k);
+    const cell = (p, i) => (i < p.length && !F.isZero(p[i]) ? IP.v(p[i]) : '0');
+    let total = [F.zero()];
+    rows.forEach((r) => { total = E.poly.add(total, r.poly, F); });
+    return {
+      head: [''].concat(pows.map((i) => (i === 0 ? 'number' : i === 1 ? '<i>x</i>' : '<i>x</i><sup>' + i + '</sup>'))),
+      rows: rows.map((r) => [r.label].concat(pows.map((i) => cell(r.poly, i)))).concat([['<b>add</b>'].concat(pows.map((i) => '<b>' + cell(total, i) + '</b>'))]),
+      align: ['l'].concat(pows.map(() => 'r')),
+      total: E.poly.trim(total, F),
+    };
+  };
+  // P(t) term by term: P(1) = ½(1)² − ½(1) + 1 = ½ − ½ + 1 = 1
+  IP.evalLine = (p, t, F, name, highlight) => {
+    const terms = [];
+    for (let i = p.length - 1; i >= 0; i--) if (!F.isZero(p[i]) || (i === 0 && terms.length === 0)) terms.push(i);
+    const tt = '(' + IP.v(t) + ')';
+    const sub = terms.map((i, k) => {
+      const c = p[i], neg = F.num(c) < 0, a = neg ? F.neg(c) : c;
+      const one = i > 0 && F.isZero(F.sub(a, F.one()));
+      const body = (one ? '' : IP.v(a)) + (i === 0 ? '' : tt + (i > 1 ? '<sup>' + i + '</sup>' : ''));
+      return k === 0 ? (neg ? '−' : '') + body : (neg ? ' − ' : ' + ') + body;
+    }).join('');
+    const vals = terms.map((i) => F.mul(p[i], powOf(t, i, F)));
+    const value = E.poly.evalAt(p, t, F);
+    return (name || '<i>P</i>') + '(' + IP.v(t) + ') = ' + sub + (terms.length > 1 ? ' = ' + IP.sumHTML(vals, F) : '') + ' = ' + (highlight ? M.res(IP.v(value)) : IP.v(value));
+  };
+  function powOf(t, i, F) { let r = F.one(); for (let k = 0; k < i; k++) r = F.mul(r, t); return r; }
+
   const numerHTML = (xs, b, F) => b.others.map((j) => IP.factor(xs[j], F)).join('');
   const denomHTML = (xs, b) => b.others.map((j) => '(' + IP.v(xs[b.k]) + ' − ' + M.paren(IP.v(xs[j])) + ')').join('');
 
@@ -104,41 +181,104 @@
     o = o || {};
     const n = xs.length;
     const L = E.lagrange(xs, ys, F);
+    const hasT = o.t !== null && o.t !== undefined;
+    const Lx = (k, arg) => M.v('L', k + 1) + '(' + (arg || '<i>x</i>') + ')';
+    const same = (a, b) => (F.exact ? F.isZero(F.sub(a, b)) : Math.abs(F.num(a) - F.num(b)) < 1e-9);
     const steps = [];
-    steps.push({ title: 'Label the points', text: n + ' points, so <i>P</i> has degree at most ' + (n - 1) + ':', table: IP.pointsTable(xs, ys), lines: ['<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => M.v('y', k + 1) + M.v('L', k + 1) + '(<i>x</i>)').join(' + ')] });
-    if (o.valueOnly && o.t !== null && o.t !== undefined) {
-      const ev = E.lagrangeAt(xs, ys, F, o.t);
+    steps.push({
+      title: 'Write down what you know',
+      text: n + ' points, so <i>P</i>(<i>x</i>) has degree at most ' + (n - 1) + ' (one less than the number of points). Number the points in order:',
+      table: IP.pointsTable(xs, ys),
+      then: [
+        '<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => M.v('y', k + 1) + Lx(k)).join(' + '),
+        '<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => M.paren(IP.v(ys[k])) + Lx(k)).join(' + '),
+      ],
+      note: 'Each ' + M.v('L', 'k') + '(<i>x</i>) is a "switch": it equals 1 at its own point and 0 at every other point. At ' + M.v('x', 1) + ' only the first term is switched on, so <i>P</i>(' + M.v('x', 1) + ') = ' + M.v('y', 1) + '. The same happens at every point.',
+    });
+
+    /* shortcut: one value P(t), no expanding */
+    if (o.valueOnly && hasT) {
+      const t = o.t, ev = E.lagrangeAt(xs, ys, F, t);
+      steps.push({
+        title: 'Plan: put x = ' + IP.v(t) + ' in right away',
+        text: 'You need one number, not the whole polynomial, so nothing gets expanded. Each ' + M.v('L', 'k') + '(' + IP.v(t) + ') becomes a plain number:',
+        lines: [M.v('L', 'k') + '(' + IP.v(t) + ') = ' + M.fr('(' + IP.v(t) + ' − each other <i>x</i>), multiplied', '(' + M.v('x', 'k') + ' − each other <i>x</i>), multiplied')],
+      });
       ev.parts.forEach((p) => {
-        const b = L.basis[p.k];
+        const k = p.k, others = L.basis[k].others;
         steps.push({
-          title: 'Find ' + M.v('L', p.k + 1) + '(' + IP.v(o.t) + ') — plug in right away',
-          lines: [M.v('L', p.k + 1) + '(' + IP.v(o.t) + ') = ' + M.fr(b.others.map((j) => '(' + IP.v(o.t) + ' − ' + M.paren(IP.v(xs[j])) + ')').join(''), denomHTML(xs, b)) + ' = ' + M.fr(IP.v(p.nu), IP.v(p.de)) + ' = ' + M.res(IP.v(p.L))],
+          title: 'Find ' + Lx(k, IP.v(t)) + ': leave out point ' + (k + 1),
+          text: 'Point ' + (k + 1) + ' has ' + M.v('x', k + 1) + ' = ' + IP.v(xs[k]) + ', so use the other x-values: ' + others.map((j) => IP.v(xs[j])).join(', ') + '.',
+          lines: [
+            Lx(k, IP.v(t)) + ' = ' + M.fr(others.map((j) => '(' + IP.v(t) + ' − ' + M.paren(IP.v(xs[j])) + ')').join(''), others.map((j) => '(' + IP.v(xs[k]) + ' − ' + M.paren(IP.v(xs[j])) + ')').join('')),
+            'top: ' + others.map((j) => IP.subLine(t, xs[j], F)).join(', &nbsp; '),
+            'top = ' + IP.productLine(others.map((j) => F.sub(t, xs[j])), F),
+            'bottom: ' + others.map((j) => IP.subLine(xs[k], xs[j], F)).join(', &nbsp; '),
+            'bottom = ' + IP.productLine(others.map((j) => F.sub(xs[k], xs[j])), F),
+            Lx(k, IP.v(t)) + ' = ' + IP.divLine(p.nu, p.de, F, true),
+          ],
         });
       });
-      steps.push({ title: 'Multiply by the y-values and add', lines: ['<i>P</i>(' + IP.v(o.t) + ') = ' + ev.parts.map((p) => M.paren(IP.v(ys[p.k])) + '(' + IP.v(p.L) + ')').join(' + '), '= ' + ev.parts.map((p) => M.paren(IP.v(p.term))).join(' + ') + ' = ' + M.res(IP.v(ev.value))] });
-      return { steps, answer: ['<i>P</i>(' + IP.v(o.t) + ') = ' + IP.vd(ev.value)] };
-    }
-    L.basis.forEach((b) => {
       steps.push({
-        title: 'Build ' + M.v('L', b.k + 1) + '(<i>x</i>) — skip ' + M.v('x', b.k + 1) + ' = ' + IP.v(xs[b.k]),
-        lines: [
-          M.v('L', b.k + 1) + '(<i>x</i>) = ' + M.fr(numerHTML(xs, b, F), denomHTML(xs, b)) + ' = ' + M.fr(numerHTML(xs, b, F), IP.v(b.den)),
-          '= ' + M.res(E.poly.html(b.Lk, F, UI.dp())),
-        ],
-        note: 'Top: every (<i>x</i> − other x). Bottom: the same with <i>x</i> = ' + IP.v(xs[b.k]) + '.',
+        title: 'Multiply each by its y-value',
+        lines: ev.parts.map((p) => M.v('y', p.k + 1) + Lx(p.k, IP.v(t)) + ' = ' + M.paren(IP.v(ys[p.k])) + ' × ' + M.paren(IP.v(p.L)) + ' = ' + IP.v(p.term)),
+      });
+      steps.push({
+        title: 'Add them up',
+        lines: ['<i>P</i>(' + IP.v(t) + ') = ' + IP.sumHTML(ev.parts.map((p) => p.term), F) + ' = ' + M.res(IP.vd(ev.value))],
+      });
+      const sumL = ev.parts.reduce((s, p) => F.add(s, p.L), F.zero());
+      steps.push({
+        title: 'Check your L-values',
+        lines: [ev.parts.map((p) => Lx(p.k, IP.v(t))).join(' + ') + ' = ' + IP.sumHTML(ev.parts.map((p) => p.L), F) + ' = ' + IP.v(sumL) + (same(sumL, F.one()) ? ' ✓' : '')],
+        note: 'The L-values always add up to exactly 1, whatever the points. If yours don\'t, one of them has a mistake.',
+      });
+      return { steps, answer: ['<i>P</i>(' + IP.v(t) + ') = ' + IP.vd(ev.value)] };
+    }
+
+    /* full polynomial */
+    L.basis.forEach((b) => {
+      const k = b.k, others = b.others;
+      const exp = others.length > 1 ? IP.expandLines(others.map((j) => xs[j]), F) : null;
+      const lines = [
+        Lx(k) + ' = ' + M.fr(others.map((j) => '(<i>x</i> − ' + M.v('x', j + 1) + ')').join(''), others.map((j) => '(' + M.v('x', k + 1) + ' − ' + M.v('x', j + 1) + ')').join('')),
+        Lx(k) + ' = ' + M.fr(numerHTML(xs, b, F), denomHTML(xs, b)),
+        'bottom: ' + others.map((j) => IP.subLine(xs[k], xs[j], F)).join(', &nbsp; '),
+        'bottom = ' + IP.productLine(others.map((j) => F.sub(xs[k], xs[j])), F),
+      ];
+      if (exp) exp.lines.forEach((l) => lines.push('top: ' + l));
+      lines.push(Lx(k) + ' = ' + M.fr(poly(b.numer, F), IP.v(b.den)) + ' = ' + M.res(poly(b.Lk, F)));
+      steps.push({
+        title: 'Build ' + Lx(k) + ', the switch for point ' + (k + 1),
+        text: 'Leave out point ' + (k + 1) + ' (' + M.v('x', k + 1) + ' = ' + IP.v(xs[k]) + '). <b>Top:</b> (<i>x</i> − each other x-value). <b>Bottom:</b> the same brackets with <i>x</i> replaced by ' + IP.v(xs[k]) + '.',
+        lines,
+        note: (exp ? 'Multiply the brackets one at a time: <i>x</i> times the bracket, then the number times the bracket, then add. ' : '') + 'Divide every term of the top by the bottom. Quick check: ' + xs.map((x) => Lx(k, IP.v(x)) + ' = ' + IP.v(E.poly.evalAt(b.Lk, x, F))).join(', ') + ' ✓',
       });
     });
+    const zeroY = L.basis.filter((b) => F.isZero(ys[b.k]));
     steps.push({
-      title: 'Multiply each by its y-value',
-      lines: L.basis.map((b) => M.v('y', b.k + 1) + M.v('L', b.k + 1) + '(<i>x</i>) = ' + M.paren(IP.v(ys[b.k])) + ' · [' + E.poly.html(b.Lk, F, UI.dp()) + '] = ' + E.poly.html(b.term, F, UI.dp())),
+      title: 'Multiply each switch by its y-value',
+      text: 'Multiply every term inside the bracket by the y-value.',
+      lines: L.basis.map((b) => M.v('y', b.k + 1) + Lx(b.k) + ' = ' + M.paren(IP.v(ys[b.k])) + '[' + poly(b.Lk, F) + '] = ' + poly(E.poly.trim(b.term, F), F)),
+      note: zeroY.length ? zeroY.map((b) => M.v('y', b.k + 1)).join(', ') + ' = 0, so ' + (zeroY.length > 1 ? 'those terms vanish' : 'that term vanishes') + '. On a test you can skip building that switch.' : null,
     });
-    steps.push({ title: 'Add and collect like terms', lines: ['<i>P</i>(<i>x</i>) = ' + M.res(E.poly.html(L.poly, F, UI.dp()))], note: L.poly.length - 1 < n - 1 ? 'The degree came out lower than ' + (n - 1) + ' — the points lie on a simpler curve.' : null });
-    steps.push({ title: 'Check every point', lines: xs.map((x, k) => '<i>P</i>(' + IP.v(x) + ') = ' + IP.v(E.poly.evalAt(L.poly, x, F)) + ' = ' + M.v('y', k + 1) + (F.isZero(F.sub(E.poly.evalAt(L.poly, x, F), ys[k])) ? ' ✓' : '')) });
-    const answer = ['<i>P</i>(<i>x</i>) = ' + E.poly.html(L.poly, F, UI.dp())];
-    if (o.t !== null && o.t !== undefined) {
+    const tbl = IP.collectTable(L.basis.map((b) => ({ label: M.v('y', b.k + 1) + M.v('L', b.k + 1), poly: b.term })), F);
+    steps.push({
+      title: 'Add them: line up like terms',
+      text: 'One row per term, one column per power of <i>x</i>. Add each column down.',
+      table: tbl,
+      then: ['<i>P</i>(<i>x</i>) = ' + M.res(poly(L.poly, F))],
+      note: L.poly.length - 1 < n - 1 ? 'The degree came out lower than ' + (n - 1) + ': the points happen to lie on a simpler curve. That is allowed.' : null,
+    });
+    steps.push({
+      title: 'Check: P goes through every point',
+      text: 'Put each x into <i>P</i>(<i>x</i>). You must get back its y.',
+      lines: xs.map((x, k) => IP.evalLine(L.poly, x, F) + (same(E.poly.evalAt(L.poly, x, F), ys[k]) ? ' = ' + M.v('y', k + 1) + ' ✓' : '')),
+    });
+    const answer = ['<i>P</i>(<i>x</i>) = ' + poly(L.poly, F)];
+    if (hasT) {
       const v = E.poly.evalAt(L.poly, o.t, F);
-      const pc = E.compile(E.poly.text(L.poly, F, 12));
-      steps.push({ title: 'Evaluate at <i>x</i> = ' + IP.v(o.t), lines: ['<i>P</i>(' + IP.v(o.t) + ') = ' + E.subHTML(pc.node, E.vText(o.t)) + ' = ' + M.res(IP.v(v))] });
+      steps.push({ title: 'Evaluate at <i>x</i> = ' + IP.v(o.t), text: 'Replace every <i>x</i> with ' + IP.v(o.t) + ', work out each term, then add.', lines: [IP.evalLine(L.poly, o.t, F, null, true)] });
       answer.push('<i>P</i>(' + IP.v(o.t) + ') = ' + IP.vd(v));
     }
     return { steps, answer };

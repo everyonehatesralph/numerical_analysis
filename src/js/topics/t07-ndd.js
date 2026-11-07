@@ -66,48 +66,119 @@
   }
 
   /* ---------- written solution ---------- */
+  /* P(t) term by term: each bracket (t − x_j) worked out, then the terms added */
+  function termLines(xs, coef, t, F) {
+    const lines = [], vals = [], subs = [];
+    coef.forEach((c, k) => {
+      if (k > 0 && F.isZero(c)) return;
+      const facs = xs.slice(0, k).map((x) => F.sub(t, x));
+      let v = c;
+      facs.forEach((f) => { v = F.mul(v, f); });
+      vals.push(v);
+      const sub = M.paren(IP.v(c)) + xs.slice(0, k).map((x) => '(' + IP.v(t) + ' − ' + M.paren(IP.v(x)) + ')').join('');
+      subs.push(k === 0 ? IP.v(c) : sub);
+      if (k === 0) { lines.push('term 1: ' + M.v('c', 1) + ' = ' + IP.v(c)); return; }
+      lines.push('term ' + (k + 1) + ': ' + sub + ' = ' + IP.productLine([c].concat(facs), F));
+    });
+    // the whole substitution on one line: 1 + ½(2 − 0) + ½(2 − 0)(2 − 2)
+    return { lines, vals, sub: subs.join(' + ') };
+  }
+
   function nddBoard(xs, ys, F, o) {
     o = o || {};
     const n = xs.length;
     const dd = E.divDiff(xs, ys, F);
     const { T, ops, coef } = dd;
     const deg = E.degreeFromCoef(coef, F);
+    const same = (a, b) => (F.exact ? F.isZero(F.sub(a, b)) : Math.abs(F.num(a) - F.num(b)) < 1e-9);
     const steps = [];
-    steps.push({ title: 'Set up the table', text: 'x-values in the first column, y-values next to them. The y-column is <i>f</i>[' + M.v('x', 'k') + '] = ' + M.v('y', 'k') + '.', node: triangle(xs, T, { known: () => false }) });
+    const brackets = (k) => Array.from({ length: k }, (_, j) => '(<i>x</i> − ' + M.v('x', j + 1) + ')').join('');
+    const general = '<i>P</i>(<i>x</i>) = ' + Array.from({ length: Math.min(n, 4) }, (_, k) => M.v('c', k + 1) + brackets(k)).join(' + ') + (n > 4 ? ' + ⋯' : '');
+    steps.push({
+      title: 'Write down what you know',
+      text: n + ' points, so <i>P</i>(<i>x</i>) has degree at most ' + (n - 1) + '. Newton\'s divided differences gives the same polynomial as Lagrange, written so that each point adds one term:',
+      table: IP.pointsTable(xs, ys),
+      then: [general],
+      note: 'The numbers ' + M.v('c', 1) + ', ' + M.v('c', 2) + ', … come from a triangle of "divided differences". Each one is a change in y divided by a change in x.',
+    });
+    steps.push({
+      title: 'Start the triangle: the x and y columns',
+      text: 'Write the x-values in the first column and the y-values next to them, in the same order. The y-values are the 0th divided differences: <i>f</i>[' + M.v('x', 'k') + '] = ' + M.v('y', 'k') + '.',
+      lines: [xs.map((_, k) => '<i>f</i>[' + M.v('x', k + 1) + '] = ' + cellVal(ys[k])).join(', &nbsp; ')],
+      node: triangle(xs, T, { known: () => false }),
+    });
     for (let j = 1; j < n; j++) {
       const lines = [];
       for (let i = 0; i < n - j; i++) {
         const op = ops[j][i];
-        lines.push(fLabel(i, j) + ' = ' + M.fr(cellVal(op.bot) + ' − ' + M.paren(cellVal(op.top)), cellVal(xs[i + j]) + ' − ' + M.paren(cellVal(xs[i]))) + ' = ' + M.fr(cellVal(op.nu), cellVal(op.de)) + ' = ' + M.res(cellVal(T[j][i])));
+        lines.push(fLabel(i, j) + ' = ' + M.fr(fLabel(i + 1, j - 1) + ' − ' + fLabel(i, j - 1), M.v('x', i + j + 1) + ' − ' + M.v('x', i + 1)) + ' = ' +
+          M.fr(cellVal(op.bot) + ' − ' + M.paren(cellVal(op.top)), cellVal(xs[i + j]) + ' − ' + M.paren(cellVal(xs[i]))) + ' = ' + IP.divLine(op.nu, op.de, F, true));
       }
       steps.push({
-        title: ORD[j] + ' divided differences' + (j === 1 ? ' (next to the y\'s)' : ''),
-        text: j === 1 ? '(lower y − upper y) ÷ (lower x − upper x) — the slope between neighbours.' : '(lower − upper) from the column to the left, ÷ (x at the <b>end</b> of the span − x at the <b>start</b>)' + (j === 2 ? ' — skip one x.' : ' — skip ' + (j - 1) + ' x\'s.'),
+        title: ORD[j] + ' divided differences (column ' + (j + 2) + ')',
+        text: j === 1
+          ? 'Each new number = (lower y − upper y) ÷ (lower x − upper x). It is the slope between two neighbouring points.'
+          : 'Each new number = (lower − upper number from the column on its left) ÷ (x at the <b>end</b> of its span − x at the <b>start</b>). Each number now spans ' + (j + 1) + ' points, so its two x\'s are ' + j + ' rows apart.',
         lines,
+        node: triangle(xs, T, { known: (jj) => jj <= j }),
+        warn: j === 1
+          ? 'keep fractions exactly as they are. Rounding inside the triangle spoils every number after it.'
+          : 'the bottom is not the neighbouring x\'s any more. For ' + fLabel(0, j) + ' it is ' + M.v('x', j + 1) + ' − ' + M.v('x', 1) + ' = ' + cellVal(xs[j]) + ' − ' + M.paren(cellVal(xs[0])) + '.',
       });
     }
-    steps.push({ title: 'The finished triangle', text: 'The boxed numbers on the top edge are the coefficients.', node: triangle(xs, T, { known: () => true, top: true }) });
-    steps.push({ title: 'Read the top edge', lines: [coef.map((c, j) => M.v('c', j + 1) + ' = ' + cellVal(c)).join(', &nbsp; ')], note: deg < n - 1 ? 'The top edge ends in zeros, so <i>P</i> has degree only ' + deg + '.' : null });
+    steps.push({
+      title: 'Read the coefficients from the top edge',
+      text: 'The first (top) number in every column is a coefficient.',
+      lines: coef.map((c, j) => M.v('c', j + 1) + ' = ' + (j === 0 ? '<i>f</i>[' + M.v('x', 1) + ']' : fLabel(0, j)) + ' = ' + cellVal(c)),
+      node: triangle(xs, T, { known: () => true, top: true }),
+      note: deg < n - 1 ? 'The top edge ends in zero' + (n - 1 - deg > 1 ? 's' : '') + ', so those terms vanish and <i>P</i> has degree only ' + deg + '.' : null,
+    });
     steps.push({
       title: 'Write P(x)',
-      lines: ['<i>P</i>(<i>x</i>) = ' + M.v('c', 1) + ' + ' + M.v('c', 2) + '(<i>x</i> − ' + M.v('x', 1) + ')' + (n > 2 ? ' + ' + M.v('c', 3) + '(<i>x</i> − ' + M.v('x', 1) + ')(<i>x</i> − ' + M.v('x', 2) + ')' : '') + (n > 3 ? ' + ⋯' : ''), '<i>P</i>(<i>x</i>) = ' + M.res(newtonFormHTML(xs, coef, F))],
-      note: 'Nested form: ' + nestedFormHTML(xs, coef, F),
+      text: 'Each term has one more bracket than the one before. The brackets use ' + M.v('x', 1) + ', ' + M.v('x', 2) + ', … in order; the last point ' + M.v('x', n) + ' never appears in a bracket.',
+      lines: [general, '<i>P</i>(<i>x</i>) = ' + M.res(newtonFormHTML(xs, coef, F))],
     });
-    if (o.expand !== false) steps.push({ title: 'Expanded form (if asked)', lines: ['<i>P</i>(<i>x</i>) = ' + E.poly.html(dd.poly, F, UI.dp())] });
     const answer = ['<i>P</i>(<i>x</i>) = ' + newtonFormHTML(xs, coef, F)];
-    if (o.t !== null && o.t !== undefined) {
-      const ev = E.newtonEval(coef, xs, o.t, F);
+    [o.t, o.t2].forEach((t, which) => {
+      if (t === null || t === undefined) return;
+      const tl = termLines(xs, coef, t, F), value = E.newtonEval(coef, xs, t, F).value;
       steps.push({
-        title: 'Evaluate P(' + IP.v(o.t) + ') with nested multiplication',
-        lines: ev.steps.map((s, q) => (q === 0 ? 'start: ' + IP.v(s.y) : M.paren(IP.v(s.prev)) + ' × (' + IP.v(o.t) + ' − ' + M.paren(IP.v(s.r)) + ') + ' + M.paren(IP.v(s.coef)) + ' = ' + (q === ev.steps.length - 1 ? M.res(IP.v(s.y)) : IP.v(s.y)))),
+        title: 'Find P(' + IP.v(t) + ')' + (which ? ' the same way' : ''),
+        text: 'Put <i>x</i> = ' + IP.v(t) + ' into every term. Work out each bracket first, then multiply.',
+        lines: tl.lines.concat(['<i>P</i>(' + IP.v(t) + ') = ' + IP.sumHTML(tl.vals, F) + ' = ' + M.res(IP.vd(value)) + (o.unit ? ' ' + o.unit : '')]),
+        note: which ? null : 'On a calculator the nested form is quicker: ' + nestedFormHTML(xs, coef, F) + ', worked from the inside out.',
       });
-      answer.push('<i>P</i>(' + IP.v(o.t) + ') = ' + IP.vd(ev.value) + (o.unit ? ' ' + o.unit : ''));
+      answer.push('<i>P</i>(' + IP.v(t) + ') = ' + IP.vd(value) + (o.unit ? ' ' + o.unit : ''));
+    });
+    if (o.expand !== false && deg >= 2) {
+      const rows = [], lines = [];
+      let run = [F.one()]; // the brackets of the current term, multiplied out
+      coef.forEach((c, k) => {
+        if (k === 1) run = E.poly.mulLin(run, xs[0], F);
+        if (k >= 2) { const m = IP.mulLinLine(run, xs[k - 1], F); run = m.poly; lines.push('brackets of term ' + (k + 1) + ': ' + m.line); }
+        if (F.isZero(c)) return;
+        const p = E.poly.scale(run, c, F);
+        if (k >= 1) lines.push('term ' + (k + 1) + ': ' + M.paren(IP.v(c)) + '[' + E.poly.html(run, F, UI.dp()) + '] = ' + E.poly.html(p, F, UI.dp()));
+        rows.push({ label: 'term ' + (k + 1), poly: p });
+      });
+      steps.push({
+        title: 'Expanded form (only if the question asks)',
+        text: 'Each term\'s brackets are the previous term\'s brackets times one more bracket, so multiply out once and reuse. Then line up like terms and add each column.',
+        lines,
+        table: IP.collectTable(rows, F),
+        then: ['<i>P</i>(<i>x</i>) = ' + M.res(E.poly.html(dd.poly, F, UI.dp()))],
+      });
+    } else if (o.expand !== false) {
+      steps.push({ title: 'Expanded form (only if the question asks)', lines: ['<i>P</i>(<i>x</i>) = ' + E.poly.html(dd.poly, F, UI.dp())] });
     }
-    if (o.t2 !== undefined) {
-      const ev2 = E.newtonEval(coef, xs, o.t2, F);
-      steps.push({ title: 'Evaluate P(' + IP.v(o.t2) + ') the same way', lines: ['<i>P</i>(' + IP.v(o.t2) + ') = ' + M.res(IP.vd(ev2.value))] });
-      answer.push('<i>P</i>(' + IP.v(o.t2) + ') = ' + IP.vd(ev2.value) + (o.unit ? ' ' + o.unit : ''));
-    }
+    steps.push({
+      title: 'Check: P goes through every point',
+      text: 'Put each x into <i>P</i>(<i>x</i>); you must get back its y. In Newton form most brackets become 0, so this is quick.',
+      lines: xs.map((x, k) => {
+        const tl = termLines(xs, coef, x, F), v = E.newtonEval(coef, xs, x, F).value;
+        return '<i>P</i>(' + IP.v(x) + ') = ' + tl.sub + (tl.vals.length > 1 ? ' = ' + IP.sumHTML(tl.vals, F) : '') + ' = ' + IP.v(v) + (same(v, ys[k]) ? ' = ' + M.v('y', k + 1) + ' ✓' : '');
+      }),
+    });
     if (o.howMany) {
       steps.push({
         title: 'How many polynomials of each degree?',

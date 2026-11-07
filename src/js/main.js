@@ -95,7 +95,7 @@
     UNITS.forEach(([u, name]) => {
       nav.appendChild(h('div', { class: 'nav-group', text: name }));
       NM.topics.filter((t) => t.unit === u).forEach((t) => {
-        const extra = t.id === NM.CURRENT ? h('span', { class: 'now', text: 'FOCUS' }) : UI.stars(t.id);
+        const extra = t.id === NM.CURRENT ? h('span', { class: 'now', text: 'FOCUS' }) : UI.confirmedTopics().includes(t.id) ? h('span', { class: 'now exam', text: 'EXAM' }) : UI.stars(t.id);
         nav.appendChild(navLink('#/t/' + t.id + '/learn', t.title, extra, t.num));
       });
     });
@@ -167,7 +167,8 @@
       h('div', { class: 'meta' },
         h('span', { class: 'badge ' + t.unit, text: 'Topic ' + t.num + ' · ' + NM.unitName(t.unit) }),
         h('span', { class: 'badge', text: t.book }),
-        t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your study focus' }) : null),
+        t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your study focus' }) : null,
+        UI.confirmedTopics().includes(t.id) ? h('span', { class: 'badge exam', text: 'On your ' + UI.examName().toLowerCase() + ' exam' }) : null),
       h('h1', { text: t.title }),
       h('p', { class: 'tagline', html: t.tagline })));
     el.appendChild(h('nav', { class: 'tabbar', 'aria-label': 'Topic sections' },

@@ -52,11 +52,23 @@
     clear() { try { Object.keys(localStorage).filter((k) => k.startsWith(PREFIX)).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ } },
   });
 
-  UI.settings = Object.assign({ dp: 6, theme: 'auto', size: 'normal', focus: 'ndd', examTopics: [], examDate: '' }, Store.get('settings', {}));
+  // semifinal coverage, confirmed by the student on 2026-10-31
+  UI.SEMIFINAL = ['lagrange', 'ndd', 'interp-error'];
+  UI.settings = Object.assign({ dp: 6, theme: 'auto', size: 'normal', focus: 'ndd', examTopics: UI.SEMIFINAL.slice(), examName: 'Semifinal', examDate: '' }, Store.get('settings', {}));
   if (![4, 5, 6, 8, 10].includes(UI.settings.dp)) UI.settings.dp = 6;
   UI.confirmedTopics = () => Array.isArray(UI.settings.examTopics) ? UI.settings.examTopics.filter((id) => NM.topic(id)) : [];
   // v2: the theme follows the phone's light/dark setting unless the student picks one later
   if (!UI.settings.v) { UI.settings.theme = 'auto'; UI.settings.v = 2; }
+  // v3: an empty coverage list becomes the semifinal topics, and the drill starts on them
+  if (UI.settings.v < 3) {
+    if (!Array.isArray(UI.settings.examTopics) || !UI.settings.examTopics.length) UI.settings.examTopics = UI.SEMIFINAL.slice();
+    UI.settings.examName = UI.settings.examName || 'Semifinal';
+    UI.settings.v = 3;
+    const drill = Store.get('drill', null);
+    if (drill) Store.set('drill', Object.assign(drill, { confirmedOnly: true }));
+    Store.set('settings', UI.settings); // saved now, so this runs once
+  }
+  UI.examName = () => String(UI.settings.examName || 'exam').trim() || 'exam';
   UI.dp = () => UI.settings.dp;
   UI.saveSettings = () => Store.set('settings', UI.settings);
   UI.applySize = () => {
@@ -217,6 +229,9 @@
         (s.lines || []).map((l) => h('div', { class: 'ln', html: lineHTML(l) })),
         s.table ? UI.table(s.table.head, s.table.rows, { align: s.table.align }).el : null,
         s.node || null,
+        // `then`: lines that read best after the table (a total, a result)
+        (s.then || []).map((l) => h('div', { class: 'ln', html: lineHTML(l) })),
+        s.warn ? h('div', { class: 'bwarn', html: '<b>Watch out:</b> ' + s.warn }) : null,
         s.note ? h('div', { class: 'bnote', html: s.note }) : null)));
     const answer = sol.answer && sol.answer.length ? h('div', { class: 'answer' }, h('div', { class: 'kicker', text: 'Answer' }), sol.answer.map((l) => h('div', { class: 'ln', html: lineHTML(l) }))) : null;
     const ctrl = h('div', { class: 'board-ctrl' });

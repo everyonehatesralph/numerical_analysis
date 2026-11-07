@@ -20,22 +20,81 @@
   }
 
   /* ---------- written solution ---------- */
+  const num = (v) => E.fmtE(v, 6); // 6 significant digits, like a calculator display
+  const paren = (s) => (/^[−-]/.test(s) ? '(' + s + ')' : s);
+  // a small number also written out as a plain decimal: 9.955×10⁻⁴ = 0.0009955
+  const plainDec = (v) => (Math.abs(v) >= 1e-7 && Math.abs(v) < 1e-3 ? ' = ' + v.toFixed(Math.min(12, 3 - Math.floor(Math.log10(Math.abs(v))))).replace(/0+$/, '') : '');
+  const fPrime = (k) => '<i>f</i>' + (k <= 3 ? ['', '′', '″', '‴'][k] : '<sup>(' + k + ')</sup>') + '(<i>x</i>)';
+
   function errorBoard(fc, xs, x, o) {
     o = o || {};
     const b = bound(fc, xs, x);
     if (o.maxValue !== undefined) { b.max = o.maxValue; b.bound = (Math.abs(b.prod) / b.fact) * b.max; b.guaranteed = true; }
     const n = b.n;
     const nodes = o.labels || xs.map(s4);
-    return {
-      steps: [
-        { title: 'Count the points', lines: ['<i>n</i> = ' + n + ' nodes: ' + nodes.join(', ') + ' &nbsp;→&nbsp; <i>P</i> has degree ≤ ' + (n - 1)], note: 'Use <i>n</i> (the number of points), not the degree, in the formula.' },
-        { title: 'Write the error formula', lines: ['<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>) = ' + M.fr(xs.map((_, k) => '(<i>x</i> − ' + M.v('x', k + 1) + ')').join(''), n + '!') + ' <i>f</i><sup>(' + n + ')</sup>(<i>c</i>)'] },
-        { title: 'The product at x = ' + s4(x), lines: [xs.map((xi, k) => '(' + s4(x) + ' − ' + M.paren(nodes[k]) + ')').join(''), '= ' + xs.map((xi) => M.paren(s4(x - xi))).join(' · ') + ' = ' + E.fmtE(b.prod, 5), '|product| = ' + M.res(E.fmtE(Math.abs(b.prod), 5))] },
-        { title: b.guaranteed ? 'An upper bound for the derivative' : 'A sampled derivative estimate', lines: ['<i>f</i><sup>(' + n + ')</sup>(<i>x</i>) = ' + b.d.html, (b.guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>| ≤ ' : 'sampled max ≈ ') + M.res(E.fmtE(b.max, 7))], note: o.maxWhy || (b.guaranteed ? 'Conservative interval arithmetic bounds the derivative over the whole interval. The interpolation theorem requires the relevant derivatives to exist throughout it.' : 'Sampling can miss peaks. This is an estimate, not a guaranteed upper bound.') },
-        { title: b.guaranteed ? 'Put it together' : 'Estimated error scale', lines: [(b.guaranteed ? '|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' : 'estimated scale ≈ ') + M.fr(E.fmtE(Math.abs(b.prod), 5), String(b.fact)) + ' × ' + E.fmtE(b.max, 7) + ' = ' + M.res(E.fmtE(b.bound, 4))] },
-        { title: 'Compare with the actual error', lines: ['actual |<i>f</i> − <i>P</i>| ≈ ' + E.fmtE(b.actual, 4) + (b.guaranteed && b.actual <= b.bound * 1.0000001 ? ' ≤ bound ✓' : '')], note: b.guaranteed ? 'A conservative bound may be larger than the exact maximum-based bound in the book.' : 'Do not report the sampled estimate as a guaranteed error bound.' },
+    const X = s4(x);
+    const steps = [];
+    steps.push({
+      title: 'Write down what you know',
+      lines: ['<i>f</i>(<i>x</i>) = ' + fc.html, 'nodes: ' + nodes.map((s, k) => M.v('x', k + 1) + ' = ' + s).join(', &nbsp; '), 'error wanted at <i>x</i> = ' + X],
+      text: '<i>P</i> goes through <i>f</i> exactly at the nodes. Between them the two can differ, and we want to know by <b>at most</b> how much.',
+      note: 'Count the nodes: <i>n</i> = ' + n + '. Use the number of points (not the degree, which is ' + (n - 1) + ') everywhere below.',
+    });
+    steps.push({
+      title: 'The error formula and what each part means',
+      lines: ['<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>) = ' + M.fr(xs.map((_, k) => '(<i>x</i> − ' + M.v('x', k + 1) + ')').join(''), n + '!') + ' <i>f</i><sup>(' + n + ')</sup>(<i>c</i>)'],
+      text: 'Three parts: <b>(1)</b> the product of the distances from <i>x</i> to every node, <b>(2)</b> ' + n + '! on the bottom, and <b>(3)</b> the ' + (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th') + ' derivative at some point <i>c</i> that nobody tells us.',
+      note: 'Because <i>c</i> is unknown, we use the <b>largest</b> value |<i>f</i><sup>(' + n + ')</sup>| can have. That turns the formula into an upper bound: the true error can be smaller, never bigger.',
+    });
+    const facs = xs.map((xi) => x - xi);
+    const prodLines = [];
+    let acc = facs[0];
+    for (let k = 1; k < n; k++) { const next = acc * facs[k]; prodLines.push(paren(num(acc)) + ' × ' + paren(num(facs[k])) + ' = ' + num(next)); acc = next; }
+    steps.push({
+      title: 'Part 1: the product at x = ' + X,
+      text: 'Work out each distance (<i>x</i> − node) first, then multiply them one at a time.',
+      lines: xs.map((xi, k) => X + ' − ' + M.paren(nodes[k]) + (nodes[k] !== s4(xi) ? ' = ' + X + ' − ' + M.paren(num(xi)) : '') + ' = ' + num(facs[k]))
+        .concat(prodLines)
+        .concat(['|product| = ' + M.res(num(Math.abs(b.prod)))]),
+      note: b.prod < 0 ? 'The product came out negative. Only its size matters for a bound, so drop the minus sign.' : null,
+    });
+    steps.push({
+      title: 'Part 2: ' + n + '!',
+      lines: [n + '! = ' + Array.from({ length: n }, (_, k) => n - k).join(' × ') + ' = ' + M.res(String(b.fact))],
+    });
+    const ders = [];
+    let cur = fc.node;
+    for (let k = 1; k <= n; k++) { const d = E.derivative(cur); ders.push(fPrime(k) + ' = ' + d.html); cur = d.node; }
+    steps.push({
+      title: 'Part 3: the ' + (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th') + ' derivative',
+      text: 'Differentiate ' + n + ' time' + (n > 1 ? 's' : '') + ', one step at a time:',
+      lines: ders,
+    });
+    steps.push({
+      title: (b.guaranteed ? 'Part 3: the largest |<i>f</i><sup>(' + n + ')</sup>|' : 'Part 3: a sampled estimate of the largest |<i>f</i><sup>(' + n + ')</sup>|') + ' between ' + s4(b.lo) + ' and ' + s4(b.hi),
+      text: '<i>c</i> can be anywhere from the smallest to the largest of the nodes and <i>x</i>: between ' + s4(b.lo) + ' and ' + s4(b.hi) + '. Take the worst case there.',
+      lines: [(b.guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>| ≤ ' : 'sampled max ≈ ') + M.res(num(b.max))],
+      note: o.maxWhy || (b.guaranteed ? 'Conservative interval arithmetic bounds the derivative over the whole interval. The interpolation theorem requires the relevant derivatives to exist throughout it.' : 'Sampling can miss peaks. This is an estimate, not a guaranteed upper bound.'),
+    });
+    const perFact = Math.abs(b.prod) / b.fact;
+    steps.push({
+      title: b.guaranteed ? 'Put the three parts together' : 'Estimated error scale',
+      text: 'Divide the product by ' + n + '!, then multiply by the largest derivative.',
+      lines: [
+        (b.guaranteed ? '|<i>f</i>(' + X + ') − <i>P</i>(' + X + ')| ≤ ' : 'estimated scale ≈ ') + M.fr('|product|', n + '!') + ' × max|<i>f</i><sup>(' + n + ')</sup>|',
+        M.fr(num(Math.abs(b.prod)), String(b.fact)) + ' = ' + num(perFact),
+        num(perFact) + ' × ' + num(b.max) + ' = ' + M.res(E.fmtE(b.bound, 4)) + plainDec(b.bound),
       ],
-      answer: [(b.guaranteed ? '|<i>f</i>(' + s4(x) + ') − <i>P</i>(' + s4(x) + ')| ≤ ' : 'Estimated error scale (not guaranteed): ') + E.fmtE(b.bound, 4)],
+      note: b.guaranteed ? 'In words: <i>P</i>(' + X + ') is within ' + E.fmtE(b.bound, 4) + ' of the true value <i>f</i>(' + X + ').' : null,
+    });
+    steps.push({
+      title: 'Compare with the actual error',
+      lines: ['actual |<i>f</i>(' + X + ') − <i>P</i>(' + X + ')| ≈ ' + E.fmtE(b.actual, 4) + (b.guaranteed && b.actual <= b.bound * 1.0000001 ? ' ≤ bound ✓' : '')],
+      note: b.guaranteed ? 'The real error is smaller than the bound, as it must be. On a test you only write the bound; this line is a check.' : 'Do not report the sampled estimate as a guaranteed error bound.',
+    });
+    return {
+      steps,
+      answer: [(b.guaranteed ? '|<i>f</i>(' + X + ') − <i>P</i>(' + X + ')| ≤ ' : 'Estimated error scale (not guaranteed): ') + E.fmtE(b.bound, 4) + plainDec(b.bound)],
     };
   }
 

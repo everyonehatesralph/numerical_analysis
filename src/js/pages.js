@@ -31,15 +31,34 @@
         h('li', null, h('span', { class: 'min', text: '1' }), h('span', { html: '<a href="#/t/' + cur.id + '/examples">Work through one example</a>. Say what you would do before revealing the next step.' })),
         h('li', null, h('span', { class: 'min', text: '2' }), h('span', { html: '<a href="#/t/' + cur.id + '/practice/guided">Check one calculation at a time</a>. Get feedback on the operation you are doing.' })),
         h('li', null, h('span', { class: 'min', text: '3' }), h('span', { html: '<a href="#/t/' + cur.id + '/practice/independent">Try a fresh problem independently</a>, then <a href="#/mistakes">revisit saved mistakes</a> in a later session.' })))));
-    const confirmed = UI.confirmedTopics();
-    el.appendChild(h('p', { class: 'muted small', text: confirmed.length ? 'Confirmed finals coverage: ' + confirmed.map((id) => NM.topic(id).title).join(', ') + '.' : 'Finals coverage is not confirmed yet. Select topics in Settings as your instructor confirms them.' }));
-    if (/^\d{4}-\d{2}-\d{2}$/.test(UI.settings.examDate)) el.appendChild(h('p', { class: 'muted small', text: 'Finals date: ' + new Date(UI.settings.examDate + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) }));
+    const confirmed = UI.confirmedTopics(), exam = UI.examName();
+    if (confirmed.length) {
+      let when = null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(UI.settings.examDate)) {
+        const day = new Date(UI.settings.examDate + 'T00:00:00'), now = new Date();
+        const left = Math.round((day - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+        when = day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) + (left > 1 ? ' · ' + left + ' days left' : left === 1 ? ' · tomorrow' : left === 0 ? ' · today' : '');
+      }
+      el.appendChild(h('div', { class: 'card' },
+        h('h2', { text: 'Your ' + exam.toLowerCase() + ' exam: ' + confirmed.length + ' topic' + (confirmed.length > 1 ? 's' : '') }),
+        when ? h('p', { class: 'muted', style: { marginTop: '-4px' }, text: when }) : null,
+        h('p', { class: 'muted', text: 'Each topic\'s Examples tab has full step-by-step solutions. Cover the solution, try the problem on paper, then reveal one step at a time.' }),
+        h('div', { class: 'trow-list' }, confirmed.map((id) => {
+          const t = NM.topic(id);
+          return h('a', { class: 'trow', href: '#/t/' + id + '/examples' }, h('span', { class: 'tn', text: t.num }), h('span', null, h('b', { text: t.title }), h('span', { class: 'tl', text: 'Worked examples · ' + t.book })), UI.stars(id));
+        })),
+        h('div', { class: 'row', style: { marginTop: '14px' } },
+          h('a', { class: 'btn primary', href: '#/drill' }, 'Drill these ' + confirmed.length + ' topics'),
+          h('a', { class: 'btn ghost', href: '#/settings' }, 'Change topics or date'))));
+    } else {
+      el.appendChild(h('p', { class: 'muted small', text: 'No exam topics chosen yet. Pick the topics your instructor confirmed in Settings.' }));
+    }
     el.appendChild(h('div', { class: 'stat-row', style: { margin: '6px 4px 4px' } },
       h('div', { class: 'stat' }, h('b', { text: streak }), h('span', { text: streak === 1 ? 'day in a row' : 'days in a row' })),
       h('div', { class: 'stat' }, h('b', { text: totalClean }), h('span', { text: 'first-try independent solves' })),
       h('div', { class: 'stat' }, h('b', { text: NM.topics.filter((t) => prog.level(t.id) > 0).length + '/' + NM.topics.length }), h('span', { text: 'topics started' }))));
     NM.UNITS.forEach(([u, name]) => {
-      el.appendChild(UI.section(name, u === 'finals' ? 'confirm coverage' : 'review'));
+      el.appendChild(UI.section(name, 'review'));
       el.appendChild(h('div', { class: 'trow-list' }, NM.topics.filter((t) => t.unit === u).map((t) =>
         h('a', { class: 'trow' + (t.id === NM.CURRENT ? ' current' : ''), href: '#/t/' + t.id + '/learn' },
           h('span', { class: 'tn', text: t.num }),
@@ -128,8 +147,8 @@
     const syncCoverage = () => boxes.forEach((b) => { b.cb.disabled = confirmedOnly.checked; });
     confirmedOnly.addEventListener('change', syncCoverage); syncCoverage();
     el.appendChild(h('div', { class: 'card' }, h('h3', { text: 'Topics' }),
-      h('label', { class: 'coverage-choice' }, confirmedOnly, h('span', { text: 'Use only my confirmed finals topics' })),
-      !confirmed.length ? h('p', { class: 'muted small', text: 'Finals coverage is not confirmed yet. Choose review groups below, or add confirmed topics in Settings.' }) : null,
+      h('label', { class: 'coverage-choice' }, confirmedOnly, h('span', { text: confirmed.length ? 'Only my ' + UI.examName().toLowerCase() + ' exam topics (' + confirmed.map((id) => NM.topic(id).short).join(', ') + ')' : 'Only my exam topics' })),
+      !confirmed.length ? h('p', { class: 'muted small', text: 'No exam topics chosen yet. Choose review groups below, or pick your exam topics in Settings.' }) : null,
       h('div', { style: { marginBottom: '12px' } }, boxes.map((b) => b.el)),
       h('div', { class: 'row' }, h('span', { text: 'Questions:' }), UI.seg([[5, '5'], [10, '10'], [15, '15'], [20, '20']], count, (v) => { count = +v; }),
         h('span', { class: 'grow' }), h('button', { class: 'btn primary', type: 'button', onclick: start }, 'Start drill'))));
@@ -233,16 +252,18 @@
     const th = UI.select({ label: 'Theme', value: UI.settings.theme, options: [['auto', 'Match my phone (light or dark)'], ['light', 'Always light'], ['dark', 'Always dark']], onChange: (v) => { UI.settings.theme = v; UI.saveSettings(); UI.applyTheme(); } });
     const sz = UI.select({ label: 'Text size', value: UI.settings.size, options: [['normal', 'Normal'], ['large', 'Large'], ['xl', 'Extra large']], onChange: (v) => { UI.settings.size = v; UI.saveSettings(); UI.applySize(); } });
     el.appendChild(h('div', { class: 'card' }, h('div', { class: 'form-grid' }, dp.el, th.el, sz.el)));
-    el.appendChild(h('h2', { text: 'Study focus and finals coverage' }));
+    el.appendChild(h('h2', { text: 'Study focus and exam coverage' }));
     const focus = UI.select({ label: 'My current study focus', value: NM.CURRENT, options: NM.topics.map((t) => [t.id, t.title]), onChange: (v) => { UI.settings.focus = v; UI.saveSettings(); UI.refreshNav(); UI.toast('Study focus saved'); } });
+    const examName = h('input', { type: 'text', value: UI.settings.examName || '', placeholder: 'Semifinal', autocomplete: 'off' });
+    examName.addEventListener('change', () => { UI.settings.examName = examName.value.trim(); UI.saveSettings(); UI.toast('Saved'); });
     const examDate = h('input', { type: 'date', value: UI.settings.examDate || '' });
     examDate.addEventListener('change', () => { UI.settings.examDate = examDate.value; UI.saveSettings(); });
-    el.appendChild(h('div', { class: 'form-grid' }, focus.el, h('label', { class: 'field' }, h('span', { text: 'Finals date (optional)' }), examDate)));
-    el.appendChild(h('p', { class: 'muted small', text: 'Select only topics your instructor has confirmed. Leave them unchecked while coverage is unknown. Exam drill can use this exact selection.' }));
+    el.appendChild(h('div', { class: 'form-grid' }, focus.el, h('label', { class: 'field' }, h('span', { text: 'Which exam' }), examName), h('label', { class: 'field' }, h('span', { text: 'Exam date (optional)' }), examDate)));
+    el.appendChild(h('p', { class: 'muted small', text: 'Tick only the topics your instructor confirmed for this exam. Home and the Exam drill use exactly this list.' }));
     const coverage = h('div', { class: 'coverage-grid' }), selected = new Set(UI.confirmedTopics());
     NM.topics.forEach((t) => {
       const cb = h('input', { type: 'checkbox' }); cb.checked = selected.has(t.id);
-      cb.addEventListener('change', () => { cb.checked ? selected.add(t.id) : selected.delete(t.id); UI.settings.examTopics = NM.topics.filter((t) => selected.has(t.id)).map((t) => t.id); UI.saveSettings(); });
+      cb.addEventListener('change', () => { cb.checked ? selected.add(t.id) : selected.delete(t.id); UI.settings.examTopics = NM.topics.filter((t) => selected.has(t.id)).map((t) => t.id); UI.saveSettings(); UI.refreshNav(); });
       coverage.appendChild(h('label', { class: 'coverage-choice' }, cb, h('span', { text: t.title })));
     });
     el.appendChild(coverage);

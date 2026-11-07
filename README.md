@@ -14,7 +14,7 @@ Progress is saved separately on each device and browser; use Settings → backup
 |---|---|
 | Prelim | 1 Evaluating a polynomial (nested multiplication) · 2 Bisection · 3 Fixed-point iteration · 4 Newton's method · 5 Secant / false position |
 | Midterm | 6 Lagrange interpolation · 7 Newton's divided differences |
-| After midterm (confirm finals coverage) | 8 Interpolation error · 9 Chebyshev interpolation · 10 Cubic splines · 11 Numerical differentiation · 12 Trapezoid / Simpson / Midpoint |
+| After midterm | 8 Interpolation error · 9 Chebyshev interpolation · 10 Cubic splines · 11 Numerical differentiation · 12 Trapezoid / Simpson / Midpoint |
 
 Each topic has five sections:
 
@@ -32,7 +32,7 @@ Start with one worked example, then choose **Practice → One step at a time**. 
 
 Missed or revealed guided calculations are saved in **Review mistakes**. They are due the next day and can also be retried immediately. Successful reviews without help increase the interval to 3, 7, then 14 days. The history retains the most recent 60 missed calculations and is included in Settings backups. Data remains local to this browser.
 
-In **Settings**, choose your study focus, optionally record the finals date, and select only topics your instructor has confirmed. **Exam drill → Use only my confirmed finals topics** uses that exact selection. The app leaves finals coverage unconfirmed by default.
+**Semifinal coverage:** Lagrange interpolation, Newton's divided differences, and interpolation error. These three are the default exam topics: Home shows them in a "Your semifinal exam" card, the sidebar tags them EXAM, and **Exam drill → Only my semifinal exam topics** drills just these. Change the exam name, date, or topics in **Settings** when the finals coverage is announced. The written solutions for these three topics show every bracket, product, and division, with a check at the end.
 
 Solvers check evaluated points for undefined values. Interpolation error solvers use conservative interval bounds where supported and explicitly label sampling fallbacks as estimates. Root-finding still requires the method's continuity/convergence assumptions; a small change between iterates alone does not certify decimal-place accuracy. Integration comparisons use a bounded numerical reference calculation.
 
