@@ -33,12 +33,20 @@
     const n = b.n;
     const nodes = o.labels || xs.map(s4);
     const X = s4(x);
-    const IP = NM.interp, pen = IP.pen;
+    const IP = NM.interp, pen = IP.pen, W = IP.W;
     const ord = n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th';
+    // in words, for a decimal subtraction or product
+    const subWhy = (a, b, r) => (b < 0 ? 'Minus a minus is plus. ' : r < 0 ? 'The node is bigger than <i>x</i>, so this distance is negative. ' : '') + s4(a) + ' − ' + paren(s4(b)) + ' = ' + num(r) + '.';
+    const mulWhy = (a, b, r) => (a < 0 && b < 0 ? 'Minus times minus is plus. ' : a < 0 || b < 0 ? 'Minus times plus is minus. ' : '') + paren(num(a)) + ' × ' + paren(num(b)) + ' = ' + num(r) + '.';
+    const idDist = xs.map(() => M.wid()), idProd = M.wid(), idPer = M.wid();
     const steps = [];
     steps.push({
       title: 'Write down what you know',
-      lines: ['<i>f</i>(<i>x</i>) = ' + fc.html, 'nodes: ' + nodes.map((s, k) => M.v('x', k + 1) + ' = ' + s).join(', &nbsp; '), 'error wanted at <i>x</i> = ' + X],
+      lines: [
+        W('<i>f</i>(<i>x</i>)', null, 'The function. <i>P</i> is the polynomial that copies it.', { g: 'f' }) + ' = ' + W(fc.html, 'the question', 'Copy it exactly as given.', { g: 'f' }),
+        W('nodes:', null, 'The nodes are the <i>x</i>-values <i>P</i> was built from.') + ' ' + nodes.map((s, k) => W(M.v('x', k + 1), null, 'Node ' + (k + 1) + '.') + ' = ' + W(s, 'the question', 'Count the nodes as you go: this is node ' + (k + 1) + ' of ' + n + '.', { g: 'x:' + k })).join(', &nbsp; '),
+        W('error wanted at <i>x</i>', null, 'The <i>x</i> where we want to know how far <i>P</i> can be from <i>f</i>.') + ' = ' + W(X, 'the question', null, { g: 't' }),
+      ],
       text: '<i>P</i> goes through <i>f</i> exactly at the nodes. Between them the two can differ, and we want to know by <b>at most</b> how much.',
       note: 'Count the nodes: <i>n</i> = ' + n + '. Use the number of points (not the degree, which is ' + (n - 1) + ') everywhere below.',
       tut: {
@@ -48,21 +56,34 @@
     });
     steps.push({
       title: 'The error formula and what each part means',
-      lines: ['<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>) = ' + M.fr(xs.map((_, k) => '(<i>x</i> − ' + M.v('x', k + 1) + ')').join(''), n + '!') + ' <i>f</i><sup>(' + n + ')</sup>(<i>c</i>)'],
+      lines: [W('<i>f</i>(<i>x</i>) − <i>P</i>(<i>x</i>)', null, 'The error: how far <i>P</i> is from <i>f</i> at <i>x</i>.') + ' = '
+        + M.fr(W(xs.map((_, k) => '(<i>x</i> − ' + M.v('x', k + 1) + ')').join(''), null, 'Part 1: <i>x</i> minus each node, all multiplied. One bracket per node.'),
+          W(n + '!', null, 'Part 2: ' + n + ' factorial, because there are ' + n + ' nodes.'))
+        + ' ' + W('<i>f</i><sup>(' + n + ')</sup>(<i>c</i>)', null, 'Part 3: the ' + ord + ' derivative of <i>f</i> (' + n + ' = the number of nodes), at a point <i>c</i> nobody tells us.')],
       text: 'Three parts: <b>(1)</b> the product of the distances from <i>x</i> to every node, <b>(2)</b> ' + n + '! on the bottom, and <b>(3)</b> the ' + ord + ' derivative at some point <i>c</i> that nobody tells us.',
       note: 'Because <i>c</i> is unknown, we use the <b>largest</b> value |<i>f</i><sup>(' + n + ')</sup>| can have. That turns the formula into an upper bound: the true error can be smaller, never bigger.',
       tut: { intro: 'Write the formula first. It always has three parts.', say: ['Part 1 is the product on top, part 2 is ' + n + '! below it, and part 3 is the ' + ord + ' derivative at an unknown <i>c</i>.'] },
     });
     const facs = xs.map((xi) => x - xi);
     const prodLines = [];
-    let acc = facs[0];
-    for (let k = 1; k < n; k++) { const next = acc * facs[k]; prodLines.push(paren(num(acc)) + ' × ' + paren(num(facs[k])) + ' = ' + num(next)); acc = next; }
+    let acc = facs[0], accId = idDist[0];
+    for (let k = 1; k < n; k++) {
+      const next = acc * facs[k], id = k === n - 1 ? idProd : M.wid();
+      prodLines.push(W(paren(num(acc)), k === 1 ? 'distance 1, worked out above' : 'the product on the line above', null, { src: accId }) + ' × '
+        + W(paren(num(facs[k])), 'distance ' + (k + 1) + ', worked out above', 'Multiply in one more distance.', { src: idDist[k] }) + ' = '
+        + W(num(next), paren(num(acc)) + ' × ' + paren(num(facs[k])), mulWhy(acc, facs[k], next), { pre: 'Now multiply.', id }));
+      acc = next; accId = id;
+    }
     steps.push({
       title: 'Part 1: the product at x = ' + X,
       text: 'Work out each distance (<i>x</i> − node) first, then multiply them one at a time.',
-      lines: xs.map((xi, k) => pen('c', X) + ' − ' + pen('a', M.paren(nodes[k])) + (nodes[k] !== s4(xi) ? ' = ' + X + ' − ' + M.paren(num(xi)) : '') + ' = ' + num(facs[k]))
+      lines: xs.map((xi, k) => W(pen('c', X), 'error wanted at <i>x</i> = ' + X, 'Every distance starts from ' + X + '.', { g: 't' }) + ' − '
+        + W(pen('a', M.paren(nodes[k])), 'node ' + (k + 1), 'Minus one node at a time.', { g: 'x:' + k })
+        + (nodes[k] !== s4(xi) ? ' = ' + X + ' − ' + W(M.paren(num(xi)), nodes[k] + ' as a decimal', 'Turn the node into a decimal first.') : '') + ' = '
+        + W(num(facs[k]), X + ' − ' + paren(s4(xi)), subWhy(x, xi, facs[k]), { pre: 'Now subtract.', id: idDist[k] }))
         .concat(prodLines)
-        .concat(['|product| = ' + M.res(num(Math.abs(b.prod)))]),
+        .concat([W('|product|', null, 'The bars mean the size of the number, without its sign.') + ' = ' + M.res(W(num(Math.abs(b.prod)), 'the last product above',
+          b.prod < 0 ? 'Drop the minus sign: only the size matters for a bound.' : 'It is already positive, so it stays the same.', { src: accId }))]),
       note: b.prod < 0 ? 'The product came out negative. Only its size matters for a bound, so drop the minus sign.' : null,
       tut: {
         say: xs.map((_, k) => 'Distance to node ' + (k + 1) + ': the pink ' + X + ' minus the yellow ' + nodes[k] + '.')
@@ -73,12 +94,24 @@
     });
     steps.push({
       title: 'Part 2: ' + n + '!',
-      lines: [n + '! = ' + Array.from({ length: n }, (_, k) => n - k).join(' × ') + ' = ' + M.res(String(b.fact))],
+      lines: [(() => {
+        const run = [];
+        let f = 1;
+        for (let k = n; k >= 1; k--) { f *= k; if (k < n) run.push('× ' + k + ' = ' + f); }
+        return W(n + '!', null, n + ' factorial: multiply ' + n + ' down to 1.') + ' = ' + Array.from({ length: n }, (_, k) => W(String(n - k), null, k === 0 ? 'Start at ' + n + '…' : '…then go down by one each time, all the way to 1.')).join(' × ')
+          + ' = ' + M.res(W(String(b.fact), null, n > 1 ? n + ' ' + run.join(', ') + '.' : '1! is 1.', { pre: 'Now multiply them.' }));
+      })()],
       tut: { intro: n + ' nodes, so the bottom is ' + n + ' factorial.', say: ['Multiply ' + n + ' down to 1.'] },
     });
     const ders = [];
     let cur = fc.node;
-    for (let k = 1; k <= n; k++) { const d = E.derivative(cur); ders.push(fPrime(k) + ' = ' + d.html); cur = d.node; }
+    let prevId = null;
+    for (let k = 1; k <= n; k++) {
+      const d = E.derivative(cur), id = M.wid();
+      ders.push(W(fPrime(k), null, k === 1 ? 'The first derivative of <i>f</i>.' : 'Derivative number ' + k + ': differentiate the line above once more.' + (k === n ? ' This is the one the formula needs.' : ''))
+        + ' = ' + W(d.html, k === 1 ? '<i>f</i>(<i>x</i>) = ' + fc.html : 'the line above', 'Differentiate ' + (k === 1 ? '<i>f</i>' : 'the line above') + ' term by term.', { src: prevId, id, g: k === 1 ? 'f' : null }));
+      cur = d.node; prevId = id;
+    }
     steps.push({
       title: 'Part 3: the ' + ord + ' derivative',
       text: 'Differentiate ' + n + ' time' + (n > 1 ? 's' : '') + ', one step at a time:',
@@ -88,7 +121,8 @@
     steps.push({
       title: (b.guaranteed ? 'Part 3: the largest |<i>f</i><sup>(' + n + ')</sup>|' : 'Part 3: a sampled estimate of the largest |<i>f</i><sup>(' + n + ')</sup>|') + ' between ' + s4(b.lo) + ' and ' + s4(b.hi),
       text: '<i>c</i> can be anywhere from the smallest to the largest of the nodes and <i>x</i>: between ' + s4(b.lo) + ' and ' + s4(b.hi) + '. Take the worst case there.',
-      lines: [(b.guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>| ≤ ' : 'sampled max ≈ ') + M.res(num(b.max))],
+      lines: [W(b.guaranteed ? 'max |<i>f</i><sup>(' + n + ')</sup>|' : 'sampled max', null, 'The biggest size the ' + ord + ' derivative reaches between ' + s4(b.lo) + ' and ' + s4(b.hi) + '.') + (b.guaranteed ? ' ≤ ' : ' ≈ ')
+        + M.res(W(num(b.max), 'the ' + ord + ' derivative, on ' + s4(b.lo) + ' to ' + s4(b.hi), (b.guaranteed ? 'Nobody tells us <i>c</i>, so we take the worst case: the largest it can be anywhere there.' : 'Sampled, so this is an estimate, not a guarantee.')))],
       note: o.maxWhy || (b.guaranteed ? 'Conservative interval arithmetic bounds the derivative over the whole interval. The interpolation theorem requires the relevant derivatives to exist throughout it.' : 'Sampling can miss peaks. This is an estimate, not a guaranteed upper bound.'),
       tut: { say: ['The largest the ' + ord + ' derivative can be between ' + s4(b.lo) + ' and ' + s4(b.hi) + '. We take the worst case because nobody tells us <i>c</i>.'] },
     });
@@ -97,16 +131,21 @@
       title: b.guaranteed ? 'Put the three parts together' : 'Estimated error scale',
       text: 'Divide the product by ' + n + '!, then multiply by the largest derivative.',
       lines: [
-        (b.guaranteed ? '|<i>f</i>(' + X + ') − <i>P</i>(' + X + ')| ≤ ' : 'estimated scale ≈ ') + M.fr('|product|', n + '!') + ' × max|<i>f</i><sup>(' + n + ')</sup>|',
-        M.fr(num(Math.abs(b.prod)), String(b.fact)) + ' = ' + num(perFact),
-        num(perFact) + ' × ' + num(b.max) + ' = ' + M.res(E.fmtE(b.bound, 4)) + plainDec(b.bound),
+        W(b.guaranteed ? '|<i>f</i>(' + X + ') − <i>P</i>(' + X + ')|' : 'estimated scale', null, 'The size of the error at <i>x</i> = ' + X + '.', { g: 't' }) + (b.guaranteed ? ' ≤ ' : ' ≈ ')
+          + M.fr(W('|product|', 'Part 1', null), W(n + '!', 'Part 2', null)) + ' × ' + W('max|<i>f</i><sup>(' + n + ')</sup>|', 'Part 3', 'The worst case replaces the unknown <i>f</i><sup>(' + n + ')</sup>(<i>c</i>).'),
+        M.fr(W(num(Math.abs(b.prod)), '|product| from Part 1', null), W(String(b.fact), n + '! from Part 2', null)) + ' = '
+          + W(num(perFact), num(Math.abs(b.prod)) + ' ÷ ' + b.fact, num(Math.abs(b.prod)) + ' ÷ ' + b.fact + ' = ' + num(perFact) + '.', { pre: 'Now divide.', id: idPer }),
+        W(num(perFact), 'the line above', null, { src: idPer }) + ' × ' + W(num(b.max), 'the largest derivative, from Part 3', null) + ' = '
+          + M.res(W(E.fmtE(b.bound, 4), num(perFact) + ' × ' + num(b.max), mulWhy(perFact, b.max, b.bound) + (b.bound < 1e-3 ? ' The ×10 to a minus power means a small number: move the point left.' : ''), { pre: 'Now multiply.' })) + plainDec(b.bound),
       ],
       note: b.guaranteed ? 'In words: <i>P</i>(' + X + ') is within ' + E.fmtE(b.bound, 4) + ' of the true value <i>f</i>(' + X + ').' : null,
       tut: { say: ['Put the three parts into the formula.', 'Part 1 divided by part 2: the product over ' + n + '!.', 'Times part 3, the largest derivative. This is the error bound.'], focusIntro: { t: 'c' } },
     });
     steps.push({
       title: 'Compare with the actual error',
-      lines: ['actual |<i>f</i>(' + X + ') − <i>P</i>(' + X + ')| ≈ ' + E.fmtE(b.actual, 4) + (b.guaranteed && b.actual <= b.bound * 1.0000001 ? ' ≤ bound ✓' : '')],
+      lines: [W('actual |<i>f</i>(' + X + ') − <i>P</i>(' + X + ')|', null, 'The true error: <i>f</i>(' + X + ') worked out with the real function, minus <i>P</i>(' + X + ').', { g: 't' }) + ' ≈ '
+        + W(E.fmtE(b.actual, 4), null, 'Only possible here because we know <i>f</i>. On a test you would not have this.')
+        + (b.guaranteed && b.actual <= b.bound * 1.0000001 ? ' ' + W('≤ bound', 'the bound, ' + E.fmtE(b.bound, 4) + ', from the step before', 'The true error is under the bound, as the formula promises.') + ' ✓' : '')],
       note: b.guaranteed ? 'The real error is smaller than the bound, as it must be. On a test you only write the bound; this line is a check.' : 'Do not report the sampled estimate as a guaranteed error bound.',
       tut: { intro: 'A check, not part of the test answer.', say: [b.guaranteed ? 'The real error is smaller than the bound, as it should be.' : 'This is only an estimate. Do not report it as a guaranteed bound.'] },
     });

@@ -13,10 +13,14 @@
                   onlyNewest, noGiven }        show just the newest line; hide the given panel
      sol.given = { rows: [{ key, label, cells: [html] }], extra: [{ key, html }] }, pinned at the top.
    A focus is { rowKey: { index: pen }, extraKey: pen }; pens are 'a' yellow, 'b' blue, 'c' pink,
-   and the same colours mark <span class="pen a|b|c"> inside the lines. */
+   and the same colours mark <span class="pen a|b|c"> inside the lines.
+   Each tap also explains the piece it wrote, in the card at the bottom: "From" (where it came from)
+   and "Why" (why it is what it is). Those come from notes the solutions put on their parts (M.w in
+   ui.js); the source gets a ring, in the given panel (data-gk), the triangle or a line above (data-id),
+   and an arrow is drawn from it to the new piece. */
 (function (root) {
   'use strict';
-  const NM = root.NM, UI = NM.UI, h = UI.h, Store = UI.store;
+  const NM = root.NM, UI = NM.UI, h = UI.h, Store = UI.store, M = UI.M;
   const TRY = '<b>Your turn.</b> Work out the <b>?</b> on paper, then tap <b>Check</b>.';
   const hasRes = (html) => String(html).indexOf('class="res"') >= 0;
 
@@ -85,38 +89,140 @@
   root.addEventListener('hashchange', () => UI.tutorStop());
 
   /* ---------- moves: how much one tap writes ----------
-     'symbol': one number, variable (with its subscript), operator, bracket or exponent;
-     'part': the pieces between "=" signs; 'line': the whole line. Symbols not written yet
-     keep their space (visibility: hidden), so the line never jumps while it is written. */
+     'symbol': one thing with one meaning: a number (½ and −3 included), a letter with its
+     subscript and power (x₁, x²), a term (5x), a name like L₁(x) or f[x₁ x₂], an operator or "=";
+     a bracket rides along with what it opens or closes. 'part': the pieces between "=" signs;
+     'line': the whole line. Symbols not written yet keep their space (visibility: hidden),
+     so the line never jumps while it is written. */
   const TOKEN = /−?\d+(?:\.\d+)?|[A-Za-z]+:?|\S/g;
+  const FN = /^[PLfgpQ]$/, OPEN = /^[([]$/, CLOSE = /^[)\]]$/, WORD = /^[A-Za-z]{2,}:?$/, BRACKET = /^[([)\],;|]$/;
+  const isNum = (s) => /^−?\d/.test(s);
   function tokenize(root) {
-    const units = [];
-    let supOwner = null;
-    const inside = (n, tag) => { for (let e = n.parentNode; e && e !== root; e = e.parentNode) if (e.tagName === tag) return e; return null; };
+    const toks = [];
+    let gap = false; // was there a space before the next symbol?
+    const up = (n, test) => { for (let e = n.parentNode; e && e !== root; e = e.parentNode) if (test(e)) return e; return null; };
+    const tag = (t) => (e) => e.tagName === t, cls = (c) => (e) => !!e.classList && e.classList.contains(c);
     const walk = (el) => [...el.childNodes].forEach((n) => {
       if (n.nodeType === 1) return walk(n);
-      if (n.nodeType !== 3 || !n.nodeValue.trim()) return;
-      const text = n.nodeValue, frag = document.createDocumentFragment();
-      const sub = inside(n, 'SUB'), sup = inside(n, 'SUP');
+      if (n.nodeType !== 3) return;
+      const text = n.nodeValue;
+      if (!text.trim()) { if (text) gap = true; return; }
+      const at = { sub: up(n, tag('SUB')), sup: up(n, tag('SUP')), it: !!up(n, tag('I')), res: up(n, cls('res')), fr: up(n, cls('fr')), w: up(n, cls('w')) };
+      const frag = document.createDocumentFragment();
+      const plain = (s) => { if (s) { frag.appendChild(document.createTextNode(s)); if (/\s/.test(s)) gap = true; } };
       const re = new RegExp(TOKEN.source, 'g');
       let last = 0, m;
       while ((m = re.exec(text))) {
-        if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        plain(text.slice(last, m.index));
         const s = document.createElement('span');
         s.className = 'tk';
         s.textContent = m[0];
         frag.appendChild(s);
-        if (sub && units.length) units[units.length - 1].push(s); // x₁ is one symbol
-        else if (sup && sup === supOwner) units[units.length - 1].push(s); // a whole exponent is one move
-        else { units.push([s]); supOwner = sup; }
+        toks.push(Object.assign({ el: s, t: m[0], gap }, at));
+        gap = false;
         last = m.index + m[0].length;
       }
-      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      plain(text.slice(last));
       n.parentNode.replaceChild(frag, n);
     });
     walk(root);
-    return units;
+    return group(toks);
   }
+  // which symbols one tap writes together
+  function group(toks) {
+    const inFr = new Map();
+    toks.forEach((t) => { if (t.fr) inFr.set(t.fr, (inFr.get(t.fr) || []).concat(t)); });
+    // ½ is one number: a fraction of two plain numbers with no separate notes on its parts
+    const numFr = (t) => { const l = t.fr && inFr.get(t.fr); return !!l && l.length === 2 && l.every((q) => isNum(q.t) && q.w === l[0].w); };
+    const units = [];
+    let u = null;
+    toks.forEach((t, idx) => {
+      const p = u && u.toks[u.toks.length - 1], nx = toks[idx + 1];
+      let join = false;
+      if (p && p.res === t.res) { // never across the edge of an answer box
+        if (u.fn > 0) join = true; // inside L₁( … ) or f[ … ]
+        else if (t.sub || t.sup) join = true; // x₁, x², 10⁻⁴, f⁽⁵⁾
+        else if (CLOSE.test(t.t) || /^[,;:!]$/.test(t.t)) join = true; // 2), 0, 5!
+        else if (OPEN.test(p.t) || (p.t === '|' && u.toks.length === 1 && !t.gap)) join = true; // (2, |f
+        else if (t.gap) join = !t.it && !p.it && WORD.test(p.t) && (WORD.test(t.t) || (isNum(t.t) && nx && nx.t === ':' && !nx.gap)); // "error wanted at", "term 2:"
+        else if (OPEN.test(t.t) && u.fnName) join = 'fn'; // L₁(x), f[x₁ x₂], P(2)
+        else if (t.t === '|') join = true;
+        else if (numFr(t) && p.fr === t.fr) join = true; // the bottom of ½
+        else if (t.it && t.t === 'x' && t.w === p.w && (isNum(p.t) || numFr(p) || (p.t === '−' && u.toks.length === 1))) join = true; // 5x, ½x, −x
+        else if (p.t === '−' && u.toks.length === 1 && (isNum(t.t) || numFr(t))) join = true; // −½
+        else if ((t.t === '×' && isNum(p.t)) || (p.t === '×' && t.t === '10')) join = true; // 9.955×10⁻⁴
+      }
+      if (join) {
+        u.toks.push(t);
+        if (join === 'fn') u.fn = 1;
+        else if (u.fn > 0) { if (OPEN.test(t.t)) u.fn++; else if (CLOSE.test(t.t)) u.fn--; }
+        if (!t.sub && !t.sup) u.fnName = t.it && FN.test(t.t);
+      } else { u = { toks: [t], fn: 0, fnName: t.it && FN.test(t.t) }; units.push(u); }
+    });
+    return units.map((x) => Object.assign(x.toks.map((t) => t.el), { toks: x.toks }));
+  }
+
+  /* ---------- the note on each piece: where it came from, and why it is what it is ----------
+     The solutions put notes on their parts (M.w in ui.js); the innermost note wins, outer ones fill gaps. */
+  const KEYS = ['from', 'why', 'pre', 'g', 'src'];
+  function noteOf(unit, root) {
+    const o = {};
+    let w = null;
+    if (unit.toks) w = (unit.toks.find((t) => !BRACKET.test(t.t)) || unit.toks[0]).w;
+    else { const all = unit[0].querySelectorAll ? unit[0].querySelectorAll('.w') : []; w = unit[0].classList && unit[0].classList.contains('w') ? unit[0] : all[all.length - 1] || null; }
+    for (; w && root.contains(w); w = w.parentElement && w.parentElement.closest('.w')) KEYS.forEach((k) => { if (!o[k] && w.dataset[k]) o[k] = w.dataset[k]; });
+    return o;
+  }
+  const OPS = {
+    '+': 'Plus: add the next part.', '−': 'Minus: take the next part away.', '×': 'Times: multiply.', '÷': 'Divided by.',
+    '≤': 'At most: the left side can never be bigger than the right side.', '≈': 'About: the number is rounded.', '✓': 'It matches, so this part checks out.', '⋯': 'And so on, in the same pattern.',
+  };
+  function explain(units, k, root) {
+    const u = units[k], text = u.toks ? u.toks.map((t) => t.t).join('') : '';
+    if (text === '=') {
+      const next = units[k + 1] ? noteOf(units[k + 1], root) : {};
+      if (next.pre) return { why: next.pre };
+      // "L₁(x) =": name what is about to be written
+      const prev = units[k - 1], pt = prev && prev.toks && (prev.toks.find((t) => !BRACKET.test(t.t)) || prev.toks[0]);
+      const name = pt ? (pt.w && root.contains(pt.w) ? cleanHTML(pt.w) : chipHTML(prev)) : '';
+      return { why: name && UI.plain(name).length <= 18 ? 'Equals: next comes what ' + name + ' is.' : 'Equals: the right side is the same amount as the left side.' };
+    }
+    const o = noteOf(u, root);
+    if (!o.from && !o.why && OPS[text]) o.why = OPS[text];
+    // a result with no note: say which part it was worked out from
+    if (!o.from && !o.why && k > 0 && u.toks && units[k - 1].toks && units[k - 1].toks.map((t) => t.t).join('') === '=') {
+      const sg = u[0].closest('.sg'), prev = sg && sg.previousElementSibling;
+      if (prev && prev.classList.contains('sg')) {
+        const html = cleanHTML(prev).replace(/^\s*=\s*/, '');
+        if (UI.plain(html).length <= 48) { o.from = html; o.why = 'This is that part worked out.'; }
+      }
+    }
+    return o;
+  }
+  // a part of a written line as plain HTML again (no symbol spans, no notes)
+  function cleanHTML(el) {
+    const c = el.cloneNode(true);
+    c.querySelectorAll('.tk').forEach((e) => e.replaceWith(e.textContent));
+    c.querySelectorAll('[class]').forEach((e) => e.classList.remove('tk-wait', 'tk-hide', 'tk-now', 'tk-in', 'w-src'));
+    [c].concat([...c.querySelectorAll('.w')]).forEach((e) => { ['from', 'why', 'pre', 'g', 'id', 'src'].forEach((k) => e.removeAttribute('data-' + k)); });
+    return c.innerHTML;
+  }
+  // the piece just written, for the card: brackets that only open or close are left off
+  function chipHTML(unit) {
+    if (!unit.toks) return '';
+    let toks = unit.toks.filter((t) => !/^[,;]$/.test(t.t));
+    const count = (re) => toks.filter((t) => re.test(t.t)).length;
+    if (toks.length > 1 && OPEN.test(toks[0].t) && count(OPEN) > count(CLOSE)) toks = toks.slice(1);
+    if (toks.length > 1 && CLOSE.test(toks[toks.length - 1].t) && count(CLOSE) > count(OPEN)) toks = toks.slice(0, -1);
+    let out = '';
+    for (let k = 0; k < toks.length; k++) {
+      const t = toks[k], esc = t.t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      if (t.fr && toks[k + 1] && toks[k + 1].fr === t.fr) { out += M.fr(esc, toks[k + 1].t); k++; continue; }
+      out += t.sub ? '<sub>' + esc + '</sub>' : t.sup ? '<sup>' + esc + '</sup>' : t.it ? '<i>' + esc + '</i>' : esc;
+    }
+    return out;
+  }
+  const penOf = (e) => { const p = e && (e.closest('.pen') || (e.querySelector && e.querySelector('.pen'))); return p ? ['a', 'b', 'c'].find((c) => p.classList.contains(c)) || '' : ''; };
   function prepLine(html, size) {
     const node = h('div', { class: 'ln tut-ln', html: UI.lineHTML(html) });
     let units = size === 'line' ? [[node]] : size === 'part' ? [...node.querySelectorAll('.sg')].map((s) => [s]) : tokenize(node);
@@ -126,8 +232,8 @@
     if (res) units.forEach((u, k) => { if (u.some((e) => res.contains(e) || e.contains(res))) { if (r0 < 0) r0 = k; r1 = k; } });
     return { node, units, res, r0, r1 };
   }
-  // 'try' writes up to the answer box, then shows "?"; 'reveal' opens the box, then writes the rest
-  const lineMoves = (P, mode) => (mode === 'try' ? (P.r0 < 0 ? 1 : P.r0 + 1) : mode === 'reveal' && P.r1 >= 0 ? P.units.length - P.r1 : P.units.length);
+  // 'try' writes up to the answer box, then shows "?"; 'reveal' opens the box and fills it one piece per tap
+  const lineMoves = (P, mode) => (mode === 'try' ? (P.r0 < 0 ? 1 : P.r0 + 1) : mode === 'reveal' && P.r0 >= 0 ? P.units.length - P.r0 : P.units.length);
   function prepTable(s, size) {
     const node = h('div', { class: 'tut-table' }, UI.table(s.table.head, s.table.rows, { align: s.table.align }).el);
     const rows = [...node.querySelectorAll('tr')];
@@ -168,6 +274,11 @@
     // settings open as a sheet over the video, like a video player's own settings
     const panel = h('div', { class: 'tut-settings', hidden: true, role: 'group', 'aria-label': 'Tutorial settings' });
     const screen = h('div', { class: 'tut-screen' }, given, stage, cc, panel);
+    // arrows from where a number came from to where it is being written, drawn over the screen
+    const ink = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ink.setAttribute('class', 'tut-ink');
+    ink.setAttribute('aria-hidden', 'true');
+    const view = h('div', { class: 'tut-view' }, screen, ink);
     const bar = h('div', { class: 'tut-bar' });
     const time = h('span', { class: 'tut-time' });
     const where = h('span', { class: 'tut-chname' });
@@ -180,7 +291,7 @@
     const back = h('button', { class: 'btn tut-back', type: 'button', 'aria-label': 'Back one move', html: svg('back') });
     const next = h('button', { class: 'btn primary tut-next', type: 'button' });
     const play = h('button', { class: 'btn tut-play', type: 'button' });
-    el.append(screen, bar,
+    el.append(view, bar,
       h('div', { class: 'tut-meta' }, h('div', { class: 'tut-where' }, time, where), h('div', { class: 'tut-tools' }, ccBtn, voiceBtn, setBtn, fullBtn)),
       h('div', { class: 'tut-ctrl' }, back, next, play));
     parent.appendChild(el);
@@ -233,11 +344,11 @@
       given.hidden = !g || hide;
       if (given.hidden) return;
       focus = focus || {};
-      if (g.extra && g.extra.length) given.appendChild(h('div', { class: 'tut-gx' }, g.extra.map((x) => h('span', { class: 'tut-gcell' + (typeof focus[x.key] === 'string' ? ' pen-' + focus[x.key] : ''), html: x.html }))));
+      if (g.extra && g.extra.length) given.appendChild(h('div', { class: 'tut-gx' }, g.extra.map((x) => h('span', { class: 'tut-gcell' + (typeof focus[x.key] === 'string' ? ' pen-' + focus[x.key] : ''), html: x.html, 'data-gk': x.key }))));
       if (g.rows && g.rows.length) {
         given.appendChild(h('div', { class: 'tut-gwrap' }, h('table', { class: 'tut-gt' }, h('tbody', null, g.rows.map((r) => h('tr', null,
           h('th', { html: r.label }),
-          r.cells.map((c, k) => h('td', { class: focus[r.key] && focus[r.key][k] ? 'pen-' + focus[r.key][k] : null, html: c }))))))));
+          r.cells.map((c, k) => h('td', { class: focus[r.key] && focus[r.key][k] ? 'pen-' + focus[r.key][k] : null, html: c, 'data-gk': r.key + ':' + k }))))))));
       }
     }
     const markNewest = (units, anim) => (units || []).forEach((e) => { e.classList.add('tk-now'); if (anim) e.classList.add('tk-in'); });
@@ -248,10 +359,14 @@
       if (mode === 'try') {
         upto = Math.min(shown, P.r0);
         if (shown > P.r0) asking = true; else newest = U[upto - 1];
-      } else if (mode === 'reveal') {
-        upto = P.r1 + shown;
-        if (shown === 1) opening = true; else newest = U[upto - 1];
+      } else if (mode === 'reveal' && P.r0 >= 0) {
+        upto = P.r0 + shown;
+        opening = shown === 1;
+        newest = U[upto - 1];
       } else { upto = shown; newest = U[shown - 1]; }
+      // the note for the piece just written
+      const nk = newest ? upto - 1 : -1;
+      if (nk >= 0 && U[nk] && prefs.size !== 'line' && !asking) cur = { unit: U[nk], root: P.node, o: explain(U, nk, P.node), chip: chipHTML(U[nk]) };
       U.forEach((u, k) => { if (k >= upto && !(asking && k === P.r0)) u.forEach((e) => e.classList.add('tk-hide')); });
       if (asking && P.res) { P.res.classList.add('ask'); P.res.textContent = '?'; }
       if (opening && P.res) { if (anim) P.res.classList.add('tk-pop'); spokenHTML = 'The answer is ' + P.res.innerHTML; } else spokenHTML = newest ? newest.map((e) => e.outerHTML).join(' ') : '';
@@ -272,6 +387,11 @@
     function tableAt(s, shown, anim) {
       const P = prepTable(s, prefs.size);
       P.units.forEach((u, k) => { if (k >= shown) u.forEach((e) => e.classList.add('tk-hide')); });
+      if (prefs.size !== 'line' && P.units[shown - 1]) {
+        const u = P.units[shown - 1], o = noteOf(u, P.node);
+        const cell = u.length === 1 && /^T[DH]$/.test(u[0].tagName) ? u[0] : null;
+        cur = { unit: u, root: P.node, o, chip: cell ? cell.innerHTML : '' };
+      }
       markNewest(P.units[shown - 1], anim);
       spokenHTML = P.units[shown - 1] && prefs.size === 'symbol' ? P.units[shown - 1].map((e) => e.innerHTML).join(' ') : '';
       return P.node;
@@ -288,13 +408,17 @@
       cc.hidden = true;
     }
     let shownBeat = -2;
+    let cur = null; // the newest piece written: { unit, root, o: its note, chip }
+    let card = null, cardKey = '', cardNew = false, lead = null;
     function render(anim) {
       const keep = screen.scrollTop;
       stage.innerHTML = '';
       el.classList.remove('cover');
       spokenHTML = '';
-      if (i < 0) { shownBeat = -2; return cover(); }
+      cur = null; card = null; lead = null;
+      if (i < 0) { shownBeat = -2; cardKey = ''; cover(); return marks(false); }
       const mv = model.moves[i], bi = mv.b, b = model.beats[bi], ch = model.chapters[b.c];
+      const writing = b.kind === 'line' || b.kind === 'try' || b.kind === 'table';
       let say = b.say;
       if (b.kind === 'answer') {
         drawGiven(null);
@@ -325,28 +449,116 @@
           if (!node) continue;
           node.classList.add(now ? 'now' : 'past');
           if (now && anim && (bb.kind === 'node' || bb.kind === 'warn' || bb.kind === 'note' || (bb.kind === 'table' && prefs.size === 'line'))) node.classList.add('enter');
+          // the line's own caption sits just above it while it is written (a "your turn" keeps its line's caption)
+          if (now && writing && prefs.cc) {
+            const ls = bb.kind === 'try' ? model.beats[j + 1].say : bb.say;
+            if (ls) { lead = h('p', { class: 'tut-say' + (anim && bi !== shownBeat ? ' enter' : ''), html: ls }); stage.appendChild(lead); }
+          }
           stage.appendChild(node);
         }
-        // a "your turn" beat keeps its line's caption until the ? appears
-        if (b.kind === 'try' && mv.k < mv.n - 1) say = model.beats[bi + 1].say;
+        // the card at the bottom explains the piece just written: where it came from, and why
+        if (writing) {
+          if (asking()) say = TRY;
+          else if (cur && (cur.o.from || cur.o.why)) { card = cur; say = ''; }
+          else say = '';
+        }
       }
-      cc.innerHTML = say || '';
-      cc.hidden = !prefs.cc || !say || !panel.hidden;
+      const key = card ? (card.o.from || '') + '|' + (card.o.why || '') : '';
+      cardNew = !!card && key !== cardKey;
+      cardKey = key;
+      drawCard(say);
       // keep the screen still while one line is written; bring the newest piece into view
       const sameBeat = bi === shownBeat;
       shownBeat = bi;
       screen.scrollTop = keep;
-      const last = stage.lastElementChild;
+      const last = stage.lastElementChild, first = lead || last;
       requestAnimationFrame(() => {
-        if (!last) return;
+        if (!last) return marks(anim);
         const gh = given.hidden ? 0 : given.offsetHeight, ch2 = cc.hidden ? 0 : cc.offsetHeight;
         const room = screen.clientHeight - gh - ch2 - 24;
-        const top = last.offsetTop - gh - 8;
-        const want = last.offsetHeight > room ? top : Math.max(0, last.offsetTop + last.offsetHeight - room - gh);
+        const bottom = last.offsetTop + last.offsetHeight, span = bottom - first.offsetTop;
+        const want = span > room ? first.offsetTop - gh - 8 : Math.max(0, bottom - room - gh);
         if (b.kind === 'intro') screen.scrollTo({ top: 0 });
         else if (Math.abs(screen.scrollTop - want) > 2) screen.scrollTo({ top: Math.max(want, 0), behavior: anim && !sameBeat && !reduced() ? 'smooth' : 'auto' });
+        marks(anim);
       });
     }
+    // the card: the piece just written in a chip, then "From" and "Why"; otherwise a plain caption
+    const bare = (html) => String(html || '').replace(/ data-(?:id|src|g|from|why|pre)="[^"]*"/g, '');
+    function drawCard(say) {
+      cc.innerHTML = '';
+      cc.classList.toggle('why', !!card);
+      if (card) {
+        const main = card.unit.toks ? (card.unit.toks.find((t) => !BRACKET.test(t.t)) || card.unit.toks[0]).el : card.unit[0];
+        const pen = penOf(main) || (main.closest && main.closest('.res') ? 'a' : '');
+        const chip = bare(card.chip);
+        const row = (label, html) => (html ? h('p', { class: 'tut-why-' + label.toLowerCase() }, h('b', { text: label }), h('span', { html })) : null);
+        cc.append(
+          chip ? h('span', { class: 'tut-sym' + (pen ? ' ' + pen : '') }, h('span', { html: chip })) : null,
+          h('div', { class: 'tut-why' }, row('From', card.o.from), row('Why', card.o.why)));
+        if (cardNew) cc.classList.add('fresh'); else cc.classList.remove('fresh');
+      } else cc.innerHTML = say || '';
+      cc.hidden = !prefs.cc || (!card && !say) || !panel.hidden;
+    }
+
+    /* ---------- where it came from: rings on the sources, and an arrow to the new piece ---------- */
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    let srcs = [];
+    function marks(anim) {
+      screen.querySelectorAll('.w-src, .g-src').forEach((e) => e.classList.remove('w-src', 'g-src'));
+      srcs = [];
+      if (card && prefs.cc && !cc.hidden) {
+        (card.o.g || '').split(/\s+/).filter(Boolean).forEach((k) => {
+          const e = screen.querySelector('[data-gk="' + k + '"]');
+          if (e && !cc.contains(e)) { e.classList.add('g-src'); srcs.push(e); }
+        });
+        (card.o.src || '').split(/\s+/).filter(Boolean).forEach((id) => {
+          const all = stage.querySelectorAll('[data-id="' + id + '"]'), e = all[all.length - 1];
+          if (e) { e.classList.add('w-src'); srcs.push(e); }
+        });
+      }
+      drawInk(anim);
+      if (anim && srcs.length) setTimeout(reInk, 380); // after the new piece has settled
+    }
+    const colourOf = (e) => { const m = /\bpen-([abc])\b/.exec(e.className || ''); return m ? m[1] : penOf(e); };
+    function drawInk(anim) {
+      while (ink.firstChild) ink.removeChild(ink.firstChild);
+      if (!srcs.length || !card || !view.isConnected) return;
+      const targets = card.unit.filter((e) => e.isConnected);
+      if (!targets.length) return;
+      const box = (rs) => rs.reduce((a, r) => ({ left: Math.min(a.left, r.left), right: Math.max(a.right, r.right), top: Math.min(a.top, r.top), bottom: Math.max(a.bottom, r.bottom) }),
+        { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
+      const t = box(targets.map((e) => e.getBoundingClientRect())), vr = view.getBoundingClientRect(), sr = screen.getBoundingClientRect();
+      const top = given.hidden ? sr.top : given.getBoundingClientRect().bottom, bottom = cc.hidden ? sr.bottom : cc.getBoundingClientRect().top;
+      if (t.bottom < top || t.top > bottom) return;
+      const tPen = penOf(targets[0]);
+      srcs.forEach((s) => {
+        const r = s.getBoundingClientRect();
+        if (!given.contains(s) && (r.bottom < top || r.top > bottom)) return; // scrolled out of sight
+        if (r.bottom > t.top - 4 && r.top < t.bottom + 4) return; // on the same row: the ring says enough
+        const down = r.bottom <= t.top;
+        const x1 = (r.left + r.right) / 2 - vr.left, y1 = (down ? r.bottom + 3 : r.top - 3) - vr.top;
+        const x2 = (t.left + t.right) / 2 - vr.left, y2 = (down ? t.top - 5 : t.bottom + 5) - vr.top;
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+        const bow = Math.min(46, len * 0.2) * (dx >= 0 ? 1 : -1); // a gentle hand-drawn curve
+        const cx = (x1 + x2) / 2 - (dy / len) * bow, cy = (y1 + y2) / 2 + (dx / len) * bow;
+        const ex = x2 - cx, ey = y2 - cy, el2 = Math.hypot(ex, ey) || 1, ux = ex / el2, uy = ey / el2, hl = 9, sp = 0.5;
+        const hx = (a) => x2 - hl * (ux * Math.cos(a) - uy * Math.sin(a)), hy = (a) => y2 - hl * (uy * Math.cos(a) + ux * Math.sin(a));
+        const g = document.createElementNS(SVGNS, 'g');
+        g.setAttribute('class', 'ink ' + (colourOf(s) || tPen || 'n') + (anim && !reduced() ? ' draw' : ''));
+        const line = document.createElementNS(SVGNS, 'path');
+        line.setAttribute('d', 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'Q' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1));
+        const head = document.createElementNS(SVGNS, 'path');
+        head.setAttribute('d', 'M' + hx(sp).toFixed(1) + ' ' + hy(sp).toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + 'L' + hx(-sp).toFixed(1) + ' ' + hy(-sp).toFixed(1));
+        g.append(line, head);
+        ink.appendChild(g);
+        if (anim && line.getTotalLength) line.style.setProperty('--len', String(Math.ceil(line.getTotalLength())));
+      });
+    }
+    let inkRaf = 0;
+    const reInk = () => { if (!inkRaf) inkRaf = requestAnimationFrame(() => { inkRaf = 0; drawInk(false); }); };
+    screen.addEventListener('scroll', reInk, { passive: true });
+    if (root.ResizeObserver) new root.ResizeObserver(reInk).observe(view);
 
     /* ---------- controls ---------- */
     const asking = () => { const mv = model.moves[i]; return !!mv && model.beats[mv.b].kind === 'try' && mv.k === mv.n - 1; };
@@ -407,10 +619,14 @@
     function stopPlay() { playing = false; clearTimeout(timer); token++; afterSpeech = null; if (play.isConnected) controls(); }
     const delay = () => {
       const mv = model.moves[i], b = model.beats[mv.b], sp = Number(prefs.speed) || 1;
-      // the first move of a step leaves time to read its caption; later moves go at writing pace
-      if (mv.k === 0) return Math.max(1500, Math.min(8000, 900 + UI.plain(cc.hidden ? '' : cc.innerHTML).length * 45)) / sp;
-      return (prefs.size === 'symbol' ? 800 : prefs.size === 'part' ? 1400 : 2200) / sp + (b.kind === 'table' ? 200 : 0);
+      const read = (html) => Math.min(9000, 900 + UI.plain(html || '').length * 45);
+      // writing pace, plus time to read a caption that just appeared or a card that just changed
+      let ms = (prefs.size === 'symbol' ? 800 : prefs.size === 'part' ? 1400 : 2200) + (b.kind === 'table' ? 200 : 0);
+      if (mv.k === 0) ms = Math.max(ms, 1500, read(lead ? lead.innerHTML : cc.hidden ? '' : cc.innerHTML));
+      if (card && cardNew && !cc.hidden) ms = Math.max(ms, read(noteText(card.o)));
+      return ms / sp;
     };
+    const noteText = (o) => (o.from ? 'From ' + o.from + '. ' : '') + (o.why || '');
     function schedule() {
       clearTimeout(timer);
       if (!playing) return;
@@ -427,8 +643,11 @@
       const mv = model.moves[i], b = model.beats[mv.b];
       let html;
       if (asking()) html = TRY;
-      else if (mv.k === 0) html = (b.kind === 'intro' ? UI.plain(steps[b.c].title) + '. ' : '') + (b.speak || (cc.hidden ? '' : cc.innerHTML) || spokenHTML);
-      else html = spokenHTML; // the symbol just written: "minus", "x 1", "equals"
+      else if (b.kind === 'line' || b.kind === 'try' || b.kind === 'table') {
+        // the line's caption when it starts, then the symbol just written, then its note when the note is new
+        html = [mv.k === 0 && lead ? lead.innerHTML : '', spokenHTML, card && cardNew && !cc.hidden ? noteText(card.o) : ''].filter(Boolean).join('. ');
+      } else if (mv.k === 0) html = (b.kind === 'intro' ? UI.plain(steps[b.c].title) + '. ' : '') + (b.speak || (cc.hidden ? '' : cc.innerHTML) || spokenHTML);
+      else html = spokenHTML;
       const text = spoken(html);
       if (!text) return;
       const u = new SpeechSynthesisUtterance(text);

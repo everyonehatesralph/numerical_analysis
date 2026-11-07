@@ -18,7 +18,12 @@ function app(storage) {
 
 let checks = 0;
 const test = (name, run) => { try { run(); checks++; } catch (e) { throw new Error(name + ': ' + e.message, { cause: e }); } };
-const plain = (s) => String(s).replace(/<span class="fr"><span>([^<]*)<\/span><span>([^<]*)<\/span><\/span>/g, '$1/$2').replace(/<sup>([^<]*)<\/sup>/g, '^$1').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
+// drop the tutorial's note wrappers (<span class="w" data-…>…</span>), keeping what they wrap
+const unW = (s) => { const open = []; return String(s).replace(/<(\/?)([a-z]+)([^>]*)>/gi, (m, close, tag, rest) => {
+  if (!close) { const w = tag === 'span' && / class="w"/.test(rest); open.push(w); return w ? '' : m; }
+  return open.pop() ? '' : m;
+}); };
+const plain = (s) => unW(s).replace(/<span class="fr"><span>([^<]*)<\/span><span>([^<]*)<\/span><\/span>/g, '$1/$2').replace(/<sup>([^<]*)<\/sup>/g, '^$1').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ');
 // every string a board can show
 const texts = (b) => b.steps.flatMap((s) => [s.title, s.text, s.note, s.warn].concat(s.lines || [], s.then || [], s.table ? s.table.head.concat(...s.table.rows) : [])).concat(b.answer).filter((x) => x !== undefined && x !== null).map(String);
 const clean = (b, where) => texts(b).forEach((t) => assert(!/NaN|undefined|Infinity|\[object/.test(t), where + ' shows "' + plain(t).slice(0, 80) + '"'));
@@ -86,7 +91,7 @@ test('600 random practice solutions pass their own checks', () => {
         clean(b, name + ' / ' + q.type);
         const check = step(b, 'Check');
         if (check && check.lines) assert.strictEqual(ticks(check), check.lines.length, name + ' / ' + q.type + ': a check line has no ✓');
-        if (t === err && /Error bound/.test(q.type)) assert(texts(b).some((x) => x.includes('≤ bound ✓')), 'the bound is below the true error');
+        if (t === err && /Error bound/.test(q.type)) assert(texts(b).some((x) => plain(x).includes('≤ bound ✓')), 'the bound is below the true error');
       }
     });
   });
@@ -112,7 +117,24 @@ const tutorOK = (b, where) => {
   assert(m.beats.length > UI_LINES(b), where + ': one beat per line at least');
   assert.strictEqual(NM.UI.tutorBeats(b, { tryFirst: false }).beats.filter((x) => x.kind === 'try').length, 0);
 };
-const UI_LINES = (b) => b.steps.reduce((n, s) => n + (s.lines || []).length + (s.then || []).length, 0);
+/* the "From / Why" notes: they never change where a line may break, and every arrow
+   (data-src) points at a part written earlier in the same step, so it is on the screen */
+const notesOK = (b, where) => {
+  b.steps.forEach((s) => {
+    const lines = (s.lines || []).concat(s.then || []);
+    lines.forEach((l) => assert.strictEqual(NM.UI.lineSegs(l).length, NM.UI.lineSegs(unW(l)).length, where + ': a note splits the line "' + plain(l).slice(0, 60) + '"'));
+    const html = lines.join(' ');
+    const ids = new Set([...html.matchAll(/data-id="([^"]+)"/g)].map((m) => m[1]));
+    [...html.matchAll(/data-src="([^"]+)"/g)].forEach((m) => m[1].split(' ').forEach((id) => assert(ids.has(id), where + ' / ' + plain(s.title) + ': an arrow points at "' + id + '", which is not in this step')));
+  });
+};
+test('notes keep the lines intact and point at real sources', () => {
+  [lag, ndd, err].forEach((t) => {
+    t.examples.forEach((ex, k) => notesOK(ex.solve(), t.id + ' example ' + (k + 1)));
+    t.practice.forEach((g) => { for (let k = 0; k < 20; k++) { const q = g(); if (q.board) notesOK(q.board(), t.id + ' / ' + q.type); } });
+  });
+});
+const UI_LINES = (b) =>b.steps.reduce((n, s) => n + (s.lines || []).length + (s.then || []).length, 0);
 test('tutorial captions and highlights line up with the book examples', () => {
   [[lag, 'Lagrange'], [ndd, 'divided differences'], [err, 'interpolation error']].forEach(([t, name]) => t.examples.forEach((ex, k) => {
     const b = ex.solve();

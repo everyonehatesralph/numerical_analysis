@@ -41,6 +41,21 @@
   M.nf = (x, dp) => E.fmt(x, dp === undefined ? UI.dp() : dp);
   M.paren = (s) => (/^[−-]/.test(s) ? '(' + s + ')' : s);
   M.res = (s) => '<span class="res">' + s + '</span>';
+  /* A note on part of a line, read by the tutorial player (tutor.js) when that part is written:
+     o.from  where it came from ("x₂ = 2 in the table"), o.why  why it is what it is ("0 − 2 = −2: …"),
+     o.pre   what the "=" before it means ("Now work out 0 − 2."), o.g  given-panel cells it was copied
+     from ("x:1 y:1 t"), o.id  a name for it, o.src  names of the parts it was made from.
+     The notes live in attributes, so the written board looks the same. "=" is escaped, so a note
+     never splits a line at its " = " breaks. */
+  const attr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/=/g, '&#61;');
+  let wSeq = 0;
+  M.wid = () => 'w' + (++wSeq);
+  M.w = (html, o) => {
+    if (!o) return html;
+    let a = '';
+    ['from', 'why', 'pre', 'g', 'id', 'src'].forEach((k) => { if (o[k]) a += ' data-' + k + '="' + attr(o[k]) + '"'; });
+    return a ? '<span class="w"' + a + '>' + html + '</span>' : html;
+  };
   M.sign = (v) => (v > 0 ? '<span class="sign pos" title="positive">+</span>' : v < 0 ? '<span class="sign neg" title="negative">−</span>' : '<span class="sign zero">0</span>');
   M.signWord = (v) => (v > 0 ? 'positive' : v < 0 ? 'negative' : 'zero');
 
