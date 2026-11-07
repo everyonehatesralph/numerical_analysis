@@ -583,3 +583,22 @@ input[type="date"] { min-height: 44px; max-width: 100%; padding: 9px 12px; borde
   .btn:active, .choice:active, .trow:active, .ex-pick button:active { transform: none; }
   .side { transition-duration: 0ms; }
 }
+
+/* ===== Check my work ===== */
+.check-h { font-family: var(--font); font-size: 1.02rem; font-weight: 650; letter-spacing: 0; margin-bottom: 10px; }
+.check-solver.hide-solution .paper { display: none; }
+.check-solver .card { border: 0; padding: 0; background: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+label.btn { cursor: pointer; }
+.check-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 12px; }
+.check-photo { margin: 0; display: grid; gap: 4px; justify-items: start; }
+.check-photo img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); }
+.check-status { min-height: 1.6em; margin-top: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.check-steps { list-style: none; padding: 0; margin: 14px 0 8px; display: grid; }
+.check-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.check-mark { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .9rem; background: var(--surface-2); color: var(--muted); }
+.check-step.good .check-mark { background: var(--good-soft); color: var(--good); }
+.check-step.bad .check-mark { background: var(--bad-soft); color: var(--bad); }
+.check-step.warn .check-mark { background: var(--warn-soft); color: var(--warn); }
+.check-read summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.check-read pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: .85rem; background: var(--surface-2); padding: 10px 12px; border-radius: var(--radius-sm); margin: 0 0 8px; }

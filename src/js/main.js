@@ -35,7 +35,7 @@
       (NM.EXPLAIN[t.id] || []).forEach((it, k) => INDEX.push({ kind: 'In depth', label: UI.plain(it.q), sub: t.title, href: '#/t/' + t.id + '/explain', open: 'q-' + t.id + '-' + (k + 1), text: (UI.plain(it.q) + ' ' + t.title + ' ' + t.short).toLowerCase() }));
       (t.examples || []).forEach((ex) => INDEX.push({ kind: 'Example', label: UI.plain(ex.title), sub: t.title + (ex.src ? ' · ' + ex.src : ''), href: '#/t/' + t.id + '/examples', text: (UI.plain(ex.title) + ' ' + (ex.src || '') + ' ' + t.title).toLowerCase() }));
     });
-    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/mistakes', 'Review mistakes'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
+    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/check', 'Check my work (photo)'], ['#/mistakes', 'Review mistakes'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
   }
   function searchBox() {
     const input = h('input', { type: 'search', id: 'site-search', placeholder: 'Search topics and questions', autocomplete: 'off', 'aria-label': 'Search topics and questions' });
@@ -102,6 +102,7 @@
     nav.appendChild(h('div', { class: 'nav-group', text: 'Review' }));
     nav.appendChild(navLink('#/formulas', 'Formula sheet'));
     nav.appendChild(navLink('#/drill', 'Exam drill'));
+    nav.appendChild(navLink('#/check', 'Check my work'));
     nav.appendChild(navLink('#/mistakes', 'Review mistakes'));
     nav.appendChild(navLink('#/tips', 'Calculator & exam tips'));
     nav.appendChild(navLink('#/settings', 'Settings'));
@@ -206,7 +207,7 @@
       } else {
         const name = parts[0] || 'home';
         const page = NM.pages[name] || NM.pages.home;
-        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', mistakes: 'Review mistakes', tips: 'Calculator & exam tips', settings: 'Settings' };
+        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', mistakes: 'Review mistakes', check: 'Check my work', tips: 'Calculator & exam tips', settings: 'Settings' };
         crumbs.innerHTML = '<b>' + (names[name] || names.home) + '</b>';
         document.title = 'Numerical Methods Reviewer';
         page(content, crumbs, parts.slice(1));

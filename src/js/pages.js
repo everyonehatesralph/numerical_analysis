@@ -49,6 +49,7 @@
         })),
         h('div', { class: 'row', style: { marginTop: '14px' } },
           h('a', { class: 'btn primary', href: '#/drill' }, 'Drill these ' + confirmed.length + ' topics'),
+          h('a', { class: 'btn', href: '#/check' }, 'Check a photo of my work'),
           h('a', { class: 'btn ghost', href: '#/settings' }, 'Change topics or date'))));
     } else {
       el.appendChild(h('p', { class: 'muted small', text: 'No exam topics chosen yet. Pick the topics your instructor confirmed in Settings.' }));
