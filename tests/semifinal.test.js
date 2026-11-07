@@ -11,6 +11,8 @@ function app(storage) {
   ctx.NM.Plot = class { constructor() { return new Proxy(this, { get: (o, k) => (k in o ? o[k] : () => {}) }); } };
   load('src/js/topics/roots-shared.js');
   fs.readdirSync(path.join(__dirname, '../src/js/topics')).filter((f) => /^t\d/.test(f)).sort().forEach((f) => load('src/js/topics/' + f));
+  ctx.addEventListener = () => {};
+  load('src/js/tutor.js');
   return ctx;
 }
 
@@ -88,6 +90,38 @@ test('600 random practice solutions pass their own checks', () => {
       }
     });
   });
+});
+
+/* the tutorial player reads the same boards: captions must belong to real lines */
+const tutorOK = (b, where) => {
+  b.steps.forEach((s) => {
+    const t = s.tut;
+    if (!t) return;
+    const name = where + ' / ' + plain(s.title);
+    if (t.say) assert.strictEqual(t.say.length, (s.lines || []).length, name + ': one caption per line');
+    if (t.sayThen) assert.strictEqual(t.sayThen.length, (s.then || []).length, name + ': one caption per closing line');
+    if (t.focus) assert(t.focus.length <= (s.lines || []).length, name + ': highlights for lines that do not exist');
+    [t.intro, t.sayTable, t.sayNode].concat(t.say || [], t.sayThen || []).filter(Boolean).forEach((c) => assert(!/NaN|undefined|Infinity|\[object/.test(c), name + ' caption shows "' + plain(c).slice(0, 80) + '"'));
+    if (t.nodeFor) for (let c = -1; c <= (s.lines || []).length; c++) assert(t.nodeFor(c), name + ': no picture for line ' + c);
+  });
+  const m = NM.UI.tutorBeats(b, { tryFirst: true });
+  const answers = b.steps.flatMap((s) => (s.lines || []).concat(s.then || [])).filter((l) => l.includes('class="res"')).length;
+  assert.strictEqual(m.beats.filter((x) => x.kind === 'try').length, answers, where + ': every answer box gets a "your turn" pause');
+  assert.strictEqual(m.beats.at(-1).kind, 'answer', where + ': ends on the answer');
+  assert.strictEqual(m.chapters.at(-1).end, m.beats.length, where + ': chapters cover every step');
+  assert(m.beats.length > UI_LINES(b), where + ': one beat per line at least');
+  assert.strictEqual(NM.UI.tutorBeats(b, { tryFirst: false }).beats.filter((x) => x.kind === 'try').length, 0);
+};
+const UI_LINES = (b) => b.steps.reduce((n, s) => n + (s.lines || []).length + (s.then || []).length, 0);
+test('tutorial captions and highlights line up with the book examples', () => {
+  [[lag, 'Lagrange'], [ndd, 'divided differences'], [err, 'interpolation error']].forEach(([t, name]) => t.examples.forEach((ex, k) => {
+    const b = ex.solve();
+    assert(b.given && b.given.rows.length, name + ' example ' + (k + 1) + ': the given panel is filled in');
+    tutorOK(b, name + ' example ' + (k + 1));
+  }));
+});
+test('tutorial captions line up on 300 random practice solutions', () => {
+  [lag, ndd, err].forEach((t) => t.practice.forEach((g) => { for (let k = 0; k < 25; k++) { const q = g(); if (q.board) tutorOK(q.board(), t.id + ' / ' + q.type); } }));
 });
 
 test('first visit: the semifinal topics are the exam list', () => {

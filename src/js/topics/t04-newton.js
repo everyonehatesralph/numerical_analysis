@@ -188,7 +188,7 @@
         const res = E.newton(fc.f, dc.f, x0, { steps: sr.steps, tol: sr.tol });
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, newtonBoard(fc, dc, res, { detail: 5, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
+        UI.solution(paper, newtonBoard(fc, dc, res, { detail: 5, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
         UI.watch(paper, (b) => newtonWalk(b, { fc, res }));
       }
       run();

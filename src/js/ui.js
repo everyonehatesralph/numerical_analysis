@@ -203,24 +203,47 @@
   /* ---------- Board: a written solution, revealed one step at a time ----------
      sol = { steps: [{ title, text, lines: [html], node, table: {head, rows, align}, note }], answer: [html] }
      opt.reveal: 'step' (start with step 1) | 'all' | 'none' (start hidden, with a Start button) */
+  // a long line may break only before an "=", like continuing a calculation on the next line
+  const bal = (s) => (s.match(/<[a-z][^>]*>/gi) || []).length - (s.match(/<\/[a-z]+>/gi) || []).length;
+  UI.lineSegs = (l) => {
+    const segs = [];
+    let cur = null, depth = 0;
+    String(l).split(' = ').forEach((p, k) => {
+      cur = cur === null ? (k ? '= ' : '') + p : cur + ' = ' + p;
+      depth += bal(p);
+      if (depth <= 0) { segs.push(cur); cur = null; depth = 0; }
+    });
+    if (cur !== null) segs.push(cur);
+    return segs;
+  };
+  const lineHTML = (UI.lineHTML = (l) => UI.lineSegs(l).map((s) => '<span class="sg">' + s + '</span>').join(' '));
+
+  /* A solution with a Tutorial / Written switch. The tutorial (tutor.js) plays the same steps
+     one at a time like a video lesson. A container with data-sol-mode forces one view. */
+  UI.solution = (parent, sol, opt) => {
+    opt = opt || {};
+    const forced = parent.closest ? parent.closest('[data-sol-mode]') : null;
+    if (!UI.tutor || (forced && forced.getAttribute('data-sol-mode') === 'board')) return UI.board(parent, sol, opt);
+    let mode = Store.get('sol-mode', 'tutor');
+    const host = h('div', { class: 'sol-host' });
+    const draw = () => {
+      if (UI.tutorStop) UI.tutorStop();
+      host.innerHTML = '';
+      if (mode === 'board') UI.board(host, sol, opt); else UI.tutor(host, sol, opt);
+    };
+    // the "Solution" label shares a row with the switch
+    const kick = parent.lastElementChild && parent.lastElementChild.classList.contains('kicker') ? parent.lastElementChild : null;
+    parent.append(h('div', { class: 'sol-mode' }, kick,
+      UI.seg([['tutor', 'Tutorial'], ['board', 'Written']], mode, (v) => { mode = v; Store.set('sol-mode', v); draw(); })), host);
+    draw();
+    return host;
+  };
+
   UI.board = (parent, sol, opt) => {
     opt = opt || {};
     const steps = sol.steps || [];
     const wrap = h('div', { class: 'board-wrap' });
     const ol = h('ol', { class: 'board' });
-    // a long line may break only before an "=", like continuing a calculation on the next line
-    const bal = (s) => (s.match(/<[a-z][^>]*>/gi) || []).length - (s.match(/<\/[a-z]+>/gi) || []).length;
-    const lineHTML = (l) => {
-      const segs = [];
-      let cur = null, depth = 0;
-      String(l).split(' = ').forEach((p, k) => {
-        cur = cur === null ? (k ? '= ' : '') + p : cur + ' = ' + p;
-        depth += bal(p);
-        if (depth <= 0) { segs.push(cur); cur = null; depth = 0; }
-      });
-      if (cur !== null) segs.push(cur);
-      return segs.map((s) => '<span class="sg">' + s + '</span>').join(' ');
-    };
     const nodes = steps.map((s, k) => h('li', { class: 'bstep' },
       h('div', { class: 'bnum', text: k + 1 }),
       h('div', { class: 'bbody' },
@@ -377,7 +400,7 @@
       host.appendChild(paper);
       const sol = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
       host.appendChild(sol);
-      try { UI.board(sol, ex.solve(), { reveal: 'none' }); } catch (e) { console.error(e); sol.appendChild(UI.error('Could not build this solution: ' + e.message)); }
+      try { UI.solution(sol, ex.solve(), { reveal: 'none' }); } catch (e) { console.error(e); sol.appendChild(UI.error('Could not build this solution: ' + e.message)); }
       if (ex.watch) UI.watch(sol, ex.watch);
       host.appendChild(h('div', { class: 'row spread', style: { marginTop: '6px' } },
         k > 0 ? h('button', { class: 'btn', type: 'button', onclick: () => { show(k - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, '← Previous example') : h('span'),
@@ -656,7 +679,7 @@
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Full solution' }));
         reveal.appendChild(paper);
         if (q.board) {
-          try { UI.board(paper, q.board(), { reveal: 'all' }); } catch (e) { console.error(e); }
+          try { UI.solution(paper, q.board(), { reveal: 'all' }); } catch (e) { console.error(e); }
           if (typeof q.solution === 'function') UI.watch(paper, q.solution);
         } else if (typeof q.solution === 'function') q.solution(paper);
         else paper.appendChild(h('div', { html: q.solution }));

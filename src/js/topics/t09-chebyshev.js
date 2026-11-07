@@ -143,12 +143,12 @@
         if (!(isFinite(a) && isFinite(b) && b > a)) { out.appendChild(UI.error('Need numbers with a < b.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Nodes' }));
         out.appendChild(paper);
-        UI.board(paper, nodesBoard(n, a, b, ain.get(), bin.get()), { reveal: 'all' });
+        UI.solution(paper, nodesBoard(n, a, b, ain.get(), bin.get()), { reveal: 'all' });
         const fc = fin.get();
         if (fc) {
           const p2 = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Error bound' }));
           out.appendChild(p2);
-          try { UI.board(p2, boundBoard({ n, a, b, aL: ain.get(), bL: bin.get(), fc }), { reveal: 'all' }); }
+          try { UI.solution(p2, boundBoard({ n, a, b, aL: ain.get(), bL: bin.get(), fc }), { reveal: 'all' }); }
           catch (e) { p2.appendChild(UI.error(e.message)); }
         }
       }

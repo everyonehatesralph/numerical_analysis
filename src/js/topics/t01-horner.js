@@ -215,7 +215,7 @@
         }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, hornerBoard(coefHigh, xl[0], pl.F, base), { reveal: 'all' });
+        UI.solution(paper, hornerBoard(coefHigh, xl[0], pl.F, base), { reveal: 'all' });
         UI.watch(paper, (b) => hornerWalk(b, { coefHigh, x: xl[0], F: pl.F, base }));
       }
       run();

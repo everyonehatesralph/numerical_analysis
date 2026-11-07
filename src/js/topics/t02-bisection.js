@@ -232,7 +232,7 @@
         if (!res.rows.length) { out.appendChild(UI.callout('good', 'An endpoint is already a root', '<p><i>f</i> is exactly 0 at ' + E.fmtShort(res.root, 8) + '.</p>')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, bisectBoard(fc, res, { detail: 4, tol: sr.tol, places: sr.places, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
+        UI.solution(paper, bisectBoard(fc, res, { detail: 4, tol: sr.tol, places: sr.places, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' });
         UI.watch(paper, (b2) => bisectWalk(b2, { fc, res }));
       }
       run();

@@ -96,7 +96,7 @@
       h('optgroup', { label: exam.length ? 'Other topics' : 'Topics' }, NM.topics.filter((t) => !exam.includes(t.id)).map((t) => h('option', { value: t.id }, t.num + '. ' + t.title))));
     const saved = UI.store.get('check-topic', null);
     sel.value = NM.topic(saved) ? saved : exam[0] || NM.CURRENT;
-    const solver = h('div', { class: 'check-solver' });
+    const solver = h('div', { class: 'check-solver', 'data-sol-mode': 'board' });
     el.appendChild(h('section', { class: 'card check-sec' }, num('1', 'Your problem'),
       h('label', { class: 'field' }, h('span', { text: 'Topic' }), sel),
       h('p', { class: 'muted small', text: 'Type the numbers from your question, the same way they are written there.' }), solver));

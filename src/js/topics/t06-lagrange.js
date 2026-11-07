@@ -173,7 +173,20 @@
   function powOf(t, i, F) { let r = F.one(); for (let k = 0; k < i; k++) r = F.mul(r, t); return r; }
 
   const numerHTML = (xs, b, F) => b.others.map((j) => IP.factor(xs[j], F)).join('');
-  const denomHTML = (xs, b) => b.others.map((j) => '(' + IP.v(xs[b.k]) + ' − ' + M.paren(IP.v(xs[j])) + ')').join('');
+
+  /* ---------- for the tutorial player (tutor.js): coloured pens and the pinned "given" panel ---------- */
+  const pen = (IP.pen = (c, s) => '<span class="pen ' + c + '">' + s + '</span>');
+  // own point yellow, every other point blue
+  IP.focusPoint = (n, k, row) => { const m = {}; for (let j = 0; j < n; j++) m[j] = j === k ? 'a' : 'b'; const f = {}; f[row || 'x'] = m; return f; };
+  IP.focusOne = (k, pens) => { const f = {}; Object.keys(pens).forEach((r) => { f[r] = {}; f[r][k] = pens[r]; }); return f; };
+  IP.focusAll = (n, row, c) => { const m = {}; for (let j = 0; j < n; j++) m[j] = c; const f = {}; f[row] = m; return f; };
+  IP.given = (xs, ys, extra) => ({
+    rows: [{ key: 'k', label: 'point', cells: xs.map((_, k) => String(k + 1)) }, { key: 'x', label: '<i>x</i>', cells: xs.map((x) => IP.v(x)) }, { key: 'y', label: '<i>y</i>', cells: ys.map((y) => IP.v(y)) }],
+    extra: extra || null,
+  });
+  IP.and = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
+  const factorPen = (xj, F) => (F.isZero(xj) ? '<i>x</i>' : F.num(xj) < 0 ? '(<i>x</i> + ' + pen('b', IP.v(F.neg(xj))) + ')' : '(<i>x</i> − ' + pen('b', IP.v(xj)) + ')');
+  const denomPen = (xs, b) => b.others.map((j) => '(' + pen('a', IP.v(xs[b.k])) + ' − ' + pen('b', M.paren(IP.v(xs[j]))) + ')').join('');
 
   /* ---------- written solution ----------
      o.t: evaluate at t; o.valueOnly: skip the expansion (shortcut for one value) */
@@ -184,6 +197,8 @@
     const hasT = o.t !== null && o.t !== undefined;
     const Lx = (k, arg) => M.v('L', k + 1) + '(' + (arg || '<i>x</i>') + ')';
     const same = (a, b) => (F.exact ? F.isZero(F.sub(a, b)) : Math.abs(F.num(a) - F.num(b)) < 1e-9);
+    // "0 − 2 = −2" with the numbers in the same colours as the given panel
+    const subPen = (a, b, ca, cb) => '<span class="nw">' + pen(ca, IP.v(a)) + ' − ' + pen(cb, M.paren(IP.v(b))) + '&nbsp;=&nbsp;' + IP.v(F.sub(a, b)) + '</span>';
     const steps = [];
     steps.push({
       title: 'Write down what you know',
@@ -191,49 +206,75 @@
       table: IP.pointsTable(xs, ys),
       then: [
         '<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => M.v('y', k + 1) + Lx(k)).join(' + '),
-        '<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => M.paren(IP.v(ys[k])) + Lx(k)).join(' + '),
+        '<i>P</i>(<i>x</i>) = ' + xs.map((_, k) => pen('c', M.paren(IP.v(ys[k]))) + Lx(k)).join(' + '),
       ],
       note: 'Each ' + M.v('L', 'k') + '(<i>x</i>) is a "switch": it equals 1 at its own point and 0 at every other point. At ' + M.v('x', 1) + ' only the first term is switched on, so <i>P</i>(' + M.v('x', 1) + ') = ' + M.v('y', 1) + '. The same happens at every point.',
+      tut: {
+        sayTable: 'Number the points 1 to ' + n + ', in order. Every number you need comes from this table.',
+        sayThen: ['Lagrange\'s idea: each y-value times its own "switch" ' + M.v('L', 'k') + '.', 'Put in the y-values (pink). Now we only need the switches.'],
+        focusThen: [null, IP.focusAll(n, 'y', 'c')],
+      },
     });
 
     /* shortcut: one value P(t), no expanding */
     if (o.valueOnly && hasT) {
       const t = o.t, ev = E.lagrangeAt(xs, ys, F, t);
+      const T = IP.v(t);
       steps.push({
-        title: 'Plan: put x = ' + IP.v(t) + ' in right away',
-        text: 'You need one number, not the whole polynomial, so nothing gets expanded. Each ' + M.v('L', 'k') + '(' + IP.v(t) + ') becomes a plain number:',
-        lines: [M.v('L', 'k') + '(' + IP.v(t) + ') = ' + M.fr('(' + IP.v(t) + ' − each other <i>x</i>), multiplied', '(' + M.v('x', 'k') + ' − each other <i>x</i>), multiplied')],
+        title: 'Plan: put x = ' + T + ' in right away',
+        text: 'You need one number, not the whole polynomial, so nothing gets expanded. Each ' + M.v('L', 'k') + '(' + T + ') becomes a plain number:',
+        lines: [M.v('L', 'k') + '(' + T + ') = ' + M.fr('(' + T + ' − each other <i>x</i>), multiplied', '(' + M.v('x', 'k') + ' − each other <i>x</i>), multiplied')],
+        tut: { say: ['This is the pattern for every L-value. You will use it ' + n + ' times.'], focusIntro: { t: 'c' } },
       });
       ev.parts.forEach((p) => {
         const k = p.k, others = L.basis[k].others;
         steps.push({
-          title: 'Find ' + Lx(k, IP.v(t)) + ': leave out point ' + (k + 1),
+          title: 'Find ' + Lx(k, T) + ': leave out point ' + (k + 1),
           text: 'Point ' + (k + 1) + ' has ' + M.v('x', k + 1) + ' = ' + IP.v(xs[k]) + ', so use the other x-values: ' + others.map((j) => IP.v(xs[j])).join(', ') + '.',
           lines: [
-            Lx(k, IP.v(t)) + ' = ' + M.fr(others.map((j) => '(' + IP.v(t) + ' − ' + M.paren(IP.v(xs[j])) + ')').join(''), others.map((j) => '(' + IP.v(xs[k]) + ' − ' + M.paren(IP.v(xs[j])) + ')').join('')),
-            'top: ' + others.map((j) => IP.subLine(t, xs[j], F)).join(', &nbsp; '),
+            Lx(k, T) + ' = ' + M.fr(others.map((j) => '(' + pen('c', T) + ' − ' + pen('b', M.paren(IP.v(xs[j]))) + ')').join(''), denomPen(xs, L.basis[k])),
+            'top: ' + others.map((j) => subPen(t, xs[j], 'c', 'b')).join(', &nbsp; '),
             'top = ' + IP.productLine(others.map((j) => F.sub(t, xs[j])), F),
-            'bottom: ' + others.map((j) => IP.subLine(xs[k], xs[j], F)).join(', &nbsp; '),
+            'bottom: ' + others.map((j) => subPen(xs[k], xs[j], 'a', 'b')).join(', &nbsp; '),
             'bottom = ' + IP.productLine(others.map((j) => F.sub(xs[k], xs[j])), F),
-            Lx(k, IP.v(t)) + ' = ' + IP.divLine(p.nu, p.de, F, true),
+            Lx(k, T) + ' = ' + IP.divLine(p.nu, p.de, F, true),
           ],
+          tut: {
+            intro: 'Point ' + (k + 1) + ' is the one left out. Its x, ' + IP.v(xs[k]) + ', is yellow. The other x-values, ' + IP.and(others.map((j) => IP.v(xs[j]))) + ', are blue.',
+            focusIntro: Object.assign(IP.focusPoint(n, k), { t: 'c' }),
+            say: [
+              'Top: the pink ' + T + ' minus each blue x. Bottom: the yellow ' + IP.v(xs[k]) + ' minus each blue x.',
+              'Work out each bracket on top.',
+              'Multiply them. The top is ' + IP.v(p.nu) + '.',
+              'Now each bracket on the bottom.',
+              'Multiply them. The bottom is ' + IP.v(p.de) + '.',
+              'Divide the top by the bottom.',
+            ],
+          },
         });
       });
       steps.push({
         title: 'Multiply each by its y-value',
-        lines: ev.parts.map((p) => M.v('y', p.k + 1) + Lx(p.k, IP.v(t)) + ' = ' + M.paren(IP.v(ys[p.k])) + ' × ' + M.paren(IP.v(p.L)) + ' = ' + IP.v(p.term)),
+        lines: ev.parts.map((p) => M.v('y', p.k + 1) + Lx(p.k, T) + ' = ' + pen('c', M.paren(IP.v(ys[p.k]))) + ' × ' + M.paren(IP.v(p.L)) + ' = ' + IP.v(p.term)),
+        tut: {
+          intro: 'Each L-value gets multiplied by the y-value of its own point.',
+          say: ev.parts.map((p) => 'Point ' + (p.k + 1) + ': its y-value, ' + IP.v(ys[p.k]) + ' (pink), times ' + Lx(p.k, T) + '.'),
+          focus: ev.parts.map((p) => IP.focusOne(p.k, { y: 'c' })),
+        },
       });
       steps.push({
         title: 'Add them up',
-        lines: ['<i>P</i>(' + IP.v(t) + ') = ' + IP.sumHTML(ev.parts.map((p) => p.term), F) + ' = ' + M.res(IP.vd(ev.value))],
+        lines: ['<i>P</i>(' + T + ') = ' + IP.sumHTML(ev.parts.map((p) => p.term), F) + ' = ' + M.res(IP.vd(ev.value))],
+        tut: { intro: 'Last move: add the ' + n + ' results.', say: ['Add them. This is <i>P</i>(' + T + ').'] },
       });
       const sumL = ev.parts.reduce((s, p) => F.add(s, p.L), F.zero());
       steps.push({
         title: 'Check your L-values',
-        lines: [ev.parts.map((p) => Lx(p.k, IP.v(t))).join(' + ') + ' = ' + IP.sumHTML(ev.parts.map((p) => p.L), F) + ' = ' + IP.v(sumL) + (same(sumL, F.one()) ? ' ✓' : '')],
+        lines: [ev.parts.map((p) => Lx(p.k, T)).join(' + ') + ' = ' + IP.sumHTML(ev.parts.map((p) => p.L), F) + ' = ' + IP.v(sumL) + (same(sumL, F.one()) ? ' ✓' : '')],
         note: 'The L-values always add up to exactly 1, whatever the points. If yours don\'t, one of them has a mistake.',
+        tut: { intro: 'A 10-second check before you hand it in.', say: ['Add the L-values (not the terms). You must get 1.'] },
       });
-      return { steps, answer: ['<i>P</i>(' + IP.v(t) + ') = ' + IP.vd(ev.value)] };
+      return { steps, answer: ['<i>P</i>(' + T + ') = ' + IP.vd(ev.value)], given: IP.given(xs, ys, [{ key: 't', html: 'find <i>P</i>(' + T + ')' }]) };
     }
 
     /* full polynomial */
@@ -242,25 +283,42 @@
       const exp = others.length > 1 ? IP.expandLines(others.map((j) => xs[j]), F) : null;
       const lines = [
         Lx(k) + ' = ' + M.fr(others.map((j) => '(<i>x</i> − ' + M.v('x', j + 1) + ')').join(''), others.map((j) => '(' + M.v('x', k + 1) + ' − ' + M.v('x', j + 1) + ')').join('')),
-        Lx(k) + ' = ' + M.fr(numerHTML(xs, b, F), denomHTML(xs, b)),
-        'bottom: ' + others.map((j) => IP.subLine(xs[k], xs[j], F)).join(', &nbsp; '),
+        Lx(k) + ' = ' + M.fr(others.map((j) => factorPen(xs[j], F)).join(''), denomPen(xs, b)),
+        'bottom: ' + others.map((j) => subPen(xs[k], xs[j], 'a', 'b')).join(', &nbsp; '),
         'bottom = ' + IP.productLine(others.map((j) => F.sub(xs[k], xs[j])), F),
       ];
-      if (exp) exp.lines.forEach((l) => lines.push('top: ' + l));
+      const say = [
+        'First with letters. Top: <i>x</i> minus each <b>other</b> x. Bottom: the same brackets with <i>x</i> replaced by ' + M.v('x', k + 1) + '.',
+        'Now the numbers. The yellow ' + IP.v(xs[k]) + ' is this point\'s own x, so it only goes on the bottom. The blue ' + IP.and(others.map((j) => IP.v(xs[j]))) + ' go in every bracket.',
+        'Work out each bracket on the bottom. Careful with the minus signs.',
+        'Multiply them. The bottom is ' + IP.v(b.den) + '.',
+      ];
+      if (exp) exp.lines.forEach((l, e) => { lines.push('top: ' + l); say.push(e === 0 ? 'Now multiply out the top: <i>x</i> times the bracket, then the number times the bracket, then add.' : 'Same again with the next bracket.'); });
       lines.push(Lx(k) + ' = ' + M.fr(poly(b.numer, F), IP.v(b.den)) + ' = ' + M.res(poly(b.Lk, F)));
+      say.push('Divide every term on top by ' + IP.v(b.den) + '. That is ' + Lx(k) + '.');
       steps.push({
         title: 'Build ' + Lx(k) + ', the switch for point ' + (k + 1),
         text: 'Leave out point ' + (k + 1) + ' (' + M.v('x', k + 1) + ' = ' + IP.v(xs[k]) + '). <b>Top:</b> (<i>x</i> − each other x-value). <b>Bottom:</b> the same brackets with <i>x</i> replaced by ' + IP.v(xs[k]) + '.',
         lines,
         note: (exp ? 'Multiply the brackets one at a time: <i>x</i> times the bracket, then the number times the bracket, then add. ' : '') + 'Divide every term of the top by the bottom. Quick check: ' + xs.map((x) => Lx(k, IP.v(x)) + ' = ' + IP.v(E.poly.evalAt(b.Lk, x, F))).join(', ') + ' ✓',
+        tut: {
+          intro: 'Now the switch for point ' + (k + 1) + '. Its own x, ' + IP.v(xs[k]) + ', is yellow. The other x-values, in blue, make the brackets.',
+          focusIntro: IP.focusPoint(n, k),
+          say,
+        },
       });
     });
     const zeroY = L.basis.filter((b) => F.isZero(ys[b.k]));
     steps.push({
       title: 'Multiply each switch by its y-value',
       text: 'Multiply every term inside the bracket by the y-value.',
-      lines: L.basis.map((b) => M.v('y', b.k + 1) + Lx(b.k) + ' = ' + M.paren(IP.v(ys[b.k])) + '[' + poly(b.Lk, F) + '] = ' + poly(E.poly.trim(b.term, F), F)),
+      lines: L.basis.map((b) => M.v('y', b.k + 1) + Lx(b.k) + ' = ' + pen('c', M.paren(IP.v(ys[b.k]))) + '[' + poly(b.Lk, F) + '] = ' + poly(E.poly.trim(b.term, F), F)),
       note: zeroY.length ? zeroY.map((b) => M.v('y', b.k + 1)).join(', ') + ' = 0, so ' + (zeroY.length > 1 ? 'those terms vanish' : 'that term vanishes') + '. On a test you can skip building that switch.' : null,
+      tut: {
+        intro: 'All ' + n + ' switches are done. Now each one is multiplied by the y-value of its own point.',
+        say: L.basis.map((b) => 'Point ' + (b.k + 1) + ': multiply every term of ' + Lx(b.k) + ' by its y-value, ' + IP.v(ys[b.k]) + ' (pink).'),
+        focus: L.basis.map((b) => IP.focusOne(b.k, { y: 'c' })),
+      },
     });
     const tbl = IP.collectTable(L.basis.map((b) => ({ label: M.v('y', b.k + 1) + M.v('L', b.k + 1), poly: b.term })), F);
     steps.push({
@@ -269,19 +327,30 @@
       table: tbl,
       then: ['<i>P</i>(<i>x</i>) = ' + M.res(poly(L.poly, F))],
       note: L.poly.length - 1 < n - 1 ? 'The degree came out lower than ' + (n - 1) + ': the points happen to lie on a simpler curve. That is allowed.' : null,
+      tut: {
+        sayTable: 'One row for each result, one column for each power of <i>x</i>. Add down each column; the bottom row is the total.',
+        sayThen: ['Read the totals from the bottom row. This is <i>P</i>(<i>x</i>).'],
+      },
     });
     steps.push({
       title: 'Check: P goes through every point',
       text: 'Put each x into <i>P</i>(<i>x</i>). You must get back its y.',
       lines: xs.map((x, k) => IP.evalLine(L.poly, x, F) + (same(E.poly.evalAt(L.poly, x, F), ys[k]) ? ' = ' + M.v('y', k + 1) + ' ✓' : '')),
+      tut: {
+        say: xs.map((x, k) => 'Put <i>x</i> = ' + IP.v(x) + ' into <i>P</i>. You should get back ' + M.v('y', k + 1) + ' = ' + IP.v(ys[k]) + '.'),
+        focus: xs.map((_, k) => IP.focusOne(k, { x: 'a', y: 'a' })),
+      },
     });
     const answer = ['<i>P</i>(<i>x</i>) = ' + poly(L.poly, F)];
     if (hasT) {
       const v = E.poly.evalAt(L.poly, o.t, F);
-      steps.push({ title: 'Evaluate at <i>x</i> = ' + IP.v(o.t), text: 'Replace every <i>x</i> with ' + IP.v(o.t) + ', work out each term, then add.', lines: [IP.evalLine(L.poly, o.t, F, null, true)] });
+      steps.push({
+        title: 'Evaluate at <i>x</i> = ' + IP.v(o.t), text: 'Replace every <i>x</i> with ' + IP.v(o.t) + ', work out each term, then add.', lines: [IP.evalLine(L.poly, o.t, F, null, true)],
+        tut: { intro: 'Last part: the value at <i>x</i> = ' + IP.v(o.t) + '.', say: ['Replace every <i>x</i> with ' + IP.v(o.t) + ', work out each term, then add.'], focusIntro: { t: 'c' } },
+      });
       answer.push('<i>P</i>(' + IP.v(o.t) + ') = ' + IP.vd(v));
     }
-    return { steps, answer };
+    return { steps, answer, given: IP.given(xs, ys, hasT ? [{ key: 't', html: 'then find <i>P</i>(' + IP.v(o.t) + ')' }] : null) };
   }
 
   /* ---------- animation ---------- */
@@ -403,7 +472,7 @@
         if (only.checked && d.t === null) { out.appendChild(UI.error('Type the x-value to evaluate at, or untick the shortcut box.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, lagrangeBoard(d.xs, d.ys, d.F, { t: d.t, valueOnly: only.checked }), { reveal: 'all' });
+        UI.solution(paper, lagrangeBoard(d.xs, d.ys, d.F, { t: d.t, valueOnly: only.checked }), { reveal: 'all' });
         UI.watch(paper, (b) => lagrangeWalk(b, { xs: d.xs, ys: d.ys, F: d.F }));
       }
       run();

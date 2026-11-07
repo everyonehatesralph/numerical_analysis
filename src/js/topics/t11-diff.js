@@ -144,7 +144,7 @@
         if (!isFinite(x) || !(hh > 0)) { out.appendChild(UI.error('Need a number x and a positive h.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        try { UI.board(paper, diffBoard(fc, x, hh, ['forward', 'backward', 'centered', 'second'], { richardson: true, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
+        try { UI.solution(paper, diffBoard(fc, x, hh, ['forward', 'backward', 'centered', 'second'], { richardson: true, trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
         catch (e) { out.innerHTML = ''; out.appendChild(UI.error(e.message)); return; }
         UI.watch(paper, (b) => { diffPlot(b, fc, x, hh); b.appendChild(h('h3', { text: 'Error as h shrinks' })); b.appendChild(hTable(fc, x).el); }, 'Show the picture and the error table');
       }

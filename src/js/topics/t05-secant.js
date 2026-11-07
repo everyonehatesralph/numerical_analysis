@@ -201,7 +201,7 @@
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
         const trig = /sin|cos|tan/.test(fc.text);
-        UI.board(paper, method === 'false' ? falseBoard(fc, res, { detail: 5, trig }) : secantBoard(fc, res, { detail: 5, trig }), { reveal: 'all' });
+        UI.solution(paper, method === 'false' ? falseBoard(fc, res, { detail: 5, trig }) : secantBoard(fc, res, { detail: 5, trig }), { reveal: 'all' });
         UI.watch(paper, (bx) => secantWalk(bx, { fc, res, method }));
       }
       run();

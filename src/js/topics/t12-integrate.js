@@ -135,7 +135,7 @@
         if (method === 'simpson' && n % 2) { out.appendChild(UI.error('Simpson\'s Rule needs an even number of panels. Try n = ' + (n + 1) + '.')); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        try { UI.board(paper, integrateBoard(fc, a, b, n, method, { aL: ain.get(), bL: bin.get(), trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
+        try { UI.solution(paper, integrateBoard(fc, a, b, n, method, { aL: ain.get(), bL: bin.get(), trig: /sin|cos|tan/.test(fc.text) }), { reveal: 'all' }); }
         catch (e) { out.innerHTML = ''; out.appendChild(UI.error(e.message)); return; }
         UI.watch(paper, (bx) => integratePlot(bx, fc, a, b, n, method), 'Show the picture');
       }

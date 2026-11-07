@@ -227,7 +227,7 @@
         const res = E.fpi(gc.f, x0, { steps: sr.steps, tol: sr.tol });
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, fpiBoard(gc, res, { detail: 6, trig: /sin|cos|tan/.test(gc.text) }), { reveal: 'all' });
+        UI.solution(paper, fpiBoard(gc, res, { detail: 6, trig: /sin|cos|tan/.test(gc.text) }), { reveal: 'all' });
         UI.watch(paper, (b) => fpiWalk(b, { gc, res }));
       }
       run();

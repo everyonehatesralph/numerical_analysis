@@ -187,7 +187,7 @@
         if (sp.error) { out.appendChild(UI.error(sp.error)); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, splineBoard(xs, ys, pl.F, { t: tl ? tl[0] : undefined }), { reveal: 'all' });
+        UI.solution(paper, splineBoard(xs, ys, pl.F, { t: tl ? tl[0] : undefined }), { reveal: 'all' });
         UI.watch(paper, (b) => splineWalk(b, { xs, ys, F: pl.F }));
       }
       run();

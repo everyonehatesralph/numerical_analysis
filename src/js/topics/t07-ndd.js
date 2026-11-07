@@ -35,7 +35,7 @@
         if (st.top && i === 0 && known) cls += ' top';
         let node;
         if (st.input && j > 0) { node = h('div', { class: 'cell', title: UI.plain(fLabel(i, j)) }); node.appendChild(st.input(j, i)); }
-        else node = h('div', { class: cls, title: UI.plain(fLabel(i, j)), html: known || isTarget ? cellVal(T[j][i]) : '?' });
+        else node = h('div', { class: cls, title: UI.plain(fLabel(i, j)), html: known || (isTarget && !st.ask) ? cellVal(T[j][i]) : '?' });
         place(node, 2 + 2 * i + j, 2 + j);
       }
     }
@@ -100,20 +100,31 @@
       table: IP.pointsTable(xs, ys),
       then: [general],
       note: 'The numbers ' + M.v('c', 1) + ', ' + M.v('c', 2) + ', … come from a triangle of "divided differences". Each one is a change in y divided by a change in x.',
+      tut: {
+        sayTable: 'Number the points 1 to ' + n + ', in the order they are given. Keep that order all the way through.',
+        sayThen: ['Newton\'s form: every term has one more bracket than the last. The numbers ' + M.v('c', 1) + ', ' + M.v('c', 2) + ', … come from a triangle.'],
+      },
     });
     steps.push({
       title: 'Start the triangle: the x and y columns',
       text: 'Write the x-values in the first column and the y-values next to them, in the same order. The y-values are the 0th divided differences: <i>f</i>[' + M.v('x', 'k') + '] = ' + M.v('y', 'k') + '.',
       lines: [xs.map((_, k) => '<i>f</i>[' + M.v('x', k + 1) + '] = ' + cellVal(ys[k])).join(', &nbsp; ')],
       node: triangle(xs, T, { known: () => false }),
+      tut: {
+        say: ['The y-values are the first column of the triangle. Nothing to work out yet.'],
+        sayNode: 'x-values on the left, y-values next to them. Each new column is built from the column on its left.',
+      },
     });
     for (let j = 1; j < n; j++) {
-      const lines = [];
+      const lines = [], say = [];
       for (let i = 0; i < n - j; i++) {
         const op = ops[j][i];
         lines.push(fLabel(i, j) + ' = ' + M.fr(fLabel(i + 1, j - 1) + ' − ' + fLabel(i, j - 1), M.v('x', i + j + 1) + ' − ' + M.v('x', i + 1)) + ' = ' +
-          M.fr(cellVal(op.bot) + ' − ' + M.paren(cellVal(op.top)), cellVal(xs[i + j]) + ' − ' + M.paren(cellVal(xs[i]))) + ' = ' + IP.divLine(op.nu, op.de, F, true));
+          M.fr(IP.pen('a', cellVal(op.bot)) + ' − ' + IP.pen('a', M.paren(cellVal(op.top))), IP.pen('a', cellVal(xs[i + j])) + ' − ' + IP.pen('a', M.paren(cellVal(xs[i])))) + ' = ' + IP.divLine(op.nu, op.de, F, true));
+        say.push('The blue box is ' + fLabel(i, j) + '. Top: the lower yellow number minus the upper one, ' + cellVal(op.bot) + ' − ' + M.paren(cellVal(op.top)) +
+          '. Bottom: the yellow x-values, end minus start, ' + cellVal(xs[i + j]) + ' − ' + M.paren(cellVal(xs[i])) + '.' + (j > 1 && i === 0 ? ' These x\'s are ' + j + ' rows apart now.' : ''));
       }
+      const m = n - j;
       steps.push({
         title: ORD[j] + ' divided differences (column ' + (j + 2) + ')',
         text: j === 1
@@ -124,6 +135,14 @@
         warn: j === 1
           ? 'keep fractions exactly as they are. Rounding inside the triangle spoils every number after it.'
           : 'the bottom is not the neighbouring x\'s any more. For ' + fLabel(0, j) + ' it is ' + M.v('x', j + 1) + ' − ' + M.v('x', 1) + ' = ' + cellVal(xs[j]) + ' − ' + M.paren(cellVal(xs[0])) + '.',
+        tut: {
+          noGiven: true, onlyNewest: true, say,
+          // the triangle follows along: yellow = the numbers used, blue = the one being made
+          // ask: during "your turn" the blue box shows ? instead of its value
+          nodeFor: (c, ask) => (c < 0 ? triangle(xs, T, { known: (jj) => jj < j })
+            : c >= m ? triangle(xs, T, { known: (jj) => jj <= j })
+              : triangle(xs, T, { known: (jj, ii) => jj < j || (jj === j && ii < c), target: [j, c], src: [[j - 1, c], [j - 1, c + 1]], xsrc: [c, c + j], ask })),
+        },
       });
     }
     steps.push({
@@ -132,11 +151,18 @@
       lines: coef.map((c, j) => M.v('c', j + 1) + ' = ' + (j === 0 ? '<i>f</i>[' + M.v('x', 1) + ']' : fLabel(0, j)) + ' = ' + cellVal(c)),
       node: triangle(xs, T, { known: () => true, top: true }),
       note: deg < n - 1 ? 'The top edge ends in zero' + (n - 1 - deg > 1 ? 's' : '') + ', so those terms vanish and <i>P</i> has degree only ' + deg + '.' : null,
+      tut: {
+        noGiven: true,
+        intro: 'The triangle is finished. The answer only needs its top edge.',
+        say: coef.map((c, j) => M.v('c', j + 1) + ' is the top number of ' + (j === 0 ? 'the y column' : 'column ' + (j + 2)) + ': ' + cellVal(c) + '.'),
+        nodeFor: (c) => (c >= 0 && c < n ? triangle(xs, T, { known: () => true, target: [c, 0] }) : triangle(xs, T, { known: () => true, top: c >= n })),
+      },
     });
     steps.push({
       title: 'Write P(x)',
       text: 'Each term has one more bracket than the one before. The brackets use ' + M.v('x', 1) + ', ' + M.v('x', 2) + ', … in order; the last point ' + M.v('x', n) + ' never appears in a bracket.',
       lines: [general, '<i>P</i>(<i>x</i>) = ' + M.res(newtonFormHTML(xs, coef, F))],
+      tut: { say: ['The pattern: each term has one more bracket than the one before.', 'Put in the top-edge numbers and the x-values. The last x, ' + IP.v(xs[n - 1]) + ', never goes in a bracket.'], focus: [null, IP.focusAll(n - 1, 'x', 'a')] },
     });
     const answer = ['<i>P</i>(<i>x</i>) = ' + newtonFormHTML(xs, coef, F)];
     [o.t, o.t2].forEach((t, which) => {
@@ -147,6 +173,11 @@
         text: 'Put <i>x</i> = ' + IP.v(t) + ' into every term. Work out each bracket first, then multiply.',
         lines: tl.lines.concat(['<i>P</i>(' + IP.v(t) + ') = ' + IP.sumHTML(tl.vals, F) + ' = ' + M.res(IP.vd(value)) + (o.unit ? ' ' + o.unit : '')]),
         note: which ? null : 'On a calculator the nested form is quicker: ' + nestedFormHTML(xs, coef, F) + ', worked from the inside out.',
+        tut: {
+          focusIntro: which ? { t2: 'c' } : { t: 'c' },
+          say: tl.lines.map((_, q) => (q === 0 ? 'Term 1 is just ' + M.v('c', 1) + '.' : 'Next term: its coefficient times its brackets, each with <i>x</i> = ' + IP.v(t) + '.'))
+            .concat(['Add the terms. This is <i>P</i>(' + IP.v(t) + ').']),
+        },
       });
       answer.push('<i>P</i>(' + IP.v(t) + ') = ' + IP.vd(value) + (o.unit ? ' ' + o.unit : ''));
     });
@@ -167,6 +198,12 @@
         lines,
         table: IP.collectTable(rows, F),
         then: ['<i>P</i>(<i>x</i>) = ' + M.res(E.poly.html(dd.poly, F, UI.dp()))],
+        tut: {
+          intro: 'Only if the question says "expand" or "simplify". Each term reuses the brackets of the term before it.',
+          say: lines.map((l) => (l.indexOf('brackets of term') === 0 ? 'Multiply out this term\'s brackets: the last term\'s brackets times one more.' : 'Multiply every term in the brackets by the coefficient.')),
+          sayTable: 'Line up like terms, one column per power of <i>x</i>, and add down each column.',
+          sayThen: ['The bottom row is <i>P</i>(<i>x</i>) multiplied out.'],
+        },
       });
     } else if (o.expand !== false) {
       steps.push({ title: 'Expanded form (only if the question asks)', lines: ['<i>P</i>(<i>x</i>) = ' + E.poly.html(dd.poly, F, UI.dp())] });
@@ -178,6 +215,10 @@
         const tl = termLines(xs, coef, x, F), v = E.newtonEval(coef, xs, x, F).value;
         return '<i>P</i>(' + IP.v(x) + ') = ' + tl.sub + (tl.vals.length > 1 ? ' = ' + IP.sumHTML(tl.vals, F) : '') + ' = ' + IP.v(v) + (same(v, ys[k]) ? ' = ' + M.v('y', k + 1) + ' ✓' : '');
       }),
+      tut: {
+        say: xs.map((x, k) => 'Put <i>x</i> = ' + IP.v(x) + ' in. ' + (k < n - 1 ? 'From term ' + (k + 2) + ' on, a bracket is 0. ' : '') + 'You should get back ' + M.v('y', k + 1) + ' = ' + IP.v(ys[k]) + '.'),
+        focus: xs.map((_, k) => IP.focusOne(k, { x: 'a', y: 'a' })),
+      },
     });
     if (o.howMany) {
       steps.push({
@@ -187,7 +228,8 @@
         note: 'Degree ≥ ' + n + ': add <i>c</i>(<i>x</i> − ' + M.v('x', 1) + ')⋯(<i>x</i> − ' + M.v('x', n) + ') with any <i>c</i> ≠ 0.',
       });
     }
-    return { steps, answer };
+    const extra = [[o.t, 't'], [o.t2, 't2']].filter(([t]) => t !== null && t !== undefined).map(([t, key]) => ({ key, html: 'find <i>P</i>(' + IP.v(t) + ')' }));
+    return { steps, answer, given: IP.given(xs, ys, extra.length ? extra : null) };
   }
 
   /* ---------- animation ---------- */
@@ -329,7 +371,7 @@
         if (d.error) { out.appendChild(UI.error(d.error)); return; }
         const paper = h('div', { class: 'paper' }, h('div', { class: 'kicker', text: 'Solution' }));
         out.appendChild(paper);
-        UI.board(paper, nddBoard(d.xs, d.ys, d.F, { t: d.t }), { reveal: 'all' });
+        UI.solution(paper, nddBoard(d.xs, d.ys, d.F, { t: d.t }), { reveal: 'all' });
         UI.watch(paper, (b) => nddWalk(b, { xs: d.xs, ys: d.ys, F: d.F }));
       }
       run();
