@@ -68,6 +68,7 @@
     ].join('\n');
   }
 
+  const CLAUDE_COPY = 'https://claude.ai/artifact/VFoxBciHmgFAaoNUUUgoik';
   const STATUS = {
     correct: ['✓', 'good', 'Correct'], wrong: ['✗', 'bad', 'Mistake'], follows: ['→', 'warn', 'Follows from an earlier mistake'],
     missing: ['…', 'warn', 'Missing'], unclear: ['?', 'muted', 'Could not read'],
@@ -85,25 +86,22 @@
 
   NM.pages.check = (el) => {
     el.appendChild(h('h1', { text: 'Check my work' }));
-    el.appendChild(h('p', { class: 'muted', text: 'Solve on paper first. Then pick the topic, type the same numbers as your problem, and take a photo of your work.' }));
+    el.appendChild(h('p', { class: 'muted', text: 'Solve on paper first. Then tell the app your problem and take a photo of your work.' }));
+    const num = (n, text) => h('h2', { class: 'check-h' }, h('span', { class: 'check-n', text: n }), text);
 
-    /* 1. topic */
+    /* 1. the problem: the topic, then that topic's own Solver form (its solution stays hidden) */
     const exam = UI.confirmedTopics();
     const sel = h('select', { id: 'check-topic' },
       exam.length ? h('optgroup', { label: 'Your ' + UI.examName().toLowerCase() + ' exam' }, exam.map((id) => h('option', { value: id }, NM.topic(id).num + '. ' + NM.topic(id).title))) : null,
       h('optgroup', { label: exam.length ? 'Other topics' : 'Topics' }, NM.topics.filter((t) => !exam.includes(t.id)).map((t) => h('option', { value: t.id }, t.num + '. ' + t.title))));
     const saved = UI.store.get('check-topic', null);
     sel.value = NM.topic(saved) ? saved : exam[0] || NM.CURRENT;
-    el.appendChild(h('div', { class: 'card' }, h('h2', { class: 'check-h', text: '1. Topic' }), h('label', { class: 'field' }, h('span', { text: 'Which topic is your solution?' }), sel)));
-
-    /* 2. the problem: the topic's own Solver form, with its solution kept hidden */
     const solver = h('div', { class: 'check-solver' });
-    el.appendChild(h('div', { class: 'card' }, h('h2', { class: 'check-h', text: '2. Your problem' }),
-      h('p', { class: 'muted small', text: 'Type the numbers from your question. The app works out the correct solution but keeps it hidden until after the check.' }), solver));
+    el.appendChild(h('section', { class: 'card check-sec' }, num('1', 'Your problem'),
+      h('label', { class: 'field' }, h('span', { text: 'Topic' }), sel),
+      h('p', { class: 'muted small', text: 'Type the numbers from your question, the same way they are written there.' }), solver));
     const mountSolver = () => {
       solver.innerHTML = '';
-      solver.classList.add('hide-solution');
-      reveal.textContent = 'Show the correct solution';
       NM.topic(sel.value).solve(solver);
       solver.querySelectorAll('button').forEach((b) => { if (b.textContent === 'Show the solution') b.textContent = 'Use these numbers'; });
     };
@@ -116,7 +114,7 @@
       return name && String(val).trim() ? '- ' + name + ': ' + val : null;
     }).filter(Boolean).join('\n');
 
-    /* 3. photo */
+    /* 2. photo */
     const photos = [];
     const strip = h('div', { class: 'check-photos' });
     const camera = h('input', { type: 'file', accept: 'image/*', capture: 'environment', class: 'visually-hidden', id: 'check-camera' });
@@ -136,33 +134,44 @@
           h('button', { class: 'btn sm ghost', type: 'button', onclick: () => { URL.revokeObjectURL(p.url); photos.splice(k, 1); drawPhotos(); } }, 'Remove')));
       });
       checkBtn.disabled = !photos.length;
-      sideBySide.hidden = !photos.length || ai;
+      checkBtn.textContent = photos.length > 1 ? 'Check my work (' + photos.length + ' photos)' : 'Check my work';
     };
-    el.appendChild(h('div', { class: 'card' }, h('h2', { class: 'check-h', text: '3. Photo of your work' }),
+    el.appendChild(h('section', { class: 'card check-sec' }, num('2', 'Your work'),
       h('p', { class: 'muted small', text: 'Good light, the whole solution in the frame, one page per photo. Up to 3 photos for a long solution.' }),
-      h('div', { class: 'row' },
+      h('div', { class: 'check-pick' },
         h('label', { class: 'btn primary', for: 'check-camera' }, 'Take a photo'),
         h('label', { class: 'btn', for: 'check-gallery' }, 'Choose from gallery'), camera, gallery),
       strip));
 
-    /* 4. check */
+    /* 3. check, and the correct solution under the photo when you compare */
     const status = h('div', { class: 'check-status', 'aria-live': 'polite' });
     const result = h('div');
+    const compare = h('section', { class: 'check-compare', 'aria-label': 'Correct solution' });
     const checkBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Check my work');
     const stopBtn = h('button', { class: 'btn ghost', type: 'button', hidden: true }, 'Stop');
     const aiNote = h('p', { class: 'muted small' });
-    const sideBySide = h('p', { class: 'muted small', hidden: true, text: 'Compare your photo with the correct solution below, line by line. The first line that differs is where to look.' });
+    const aiLink = NM.ARTIFACT ? null : h('a', { class: 'btn sm', href: CLAUDE_COPY, target: '_blank', rel: 'noopener', hidden: true }, 'Open the claude.ai copy');
     const reveal = h('button', { class: 'btn', type: 'button' }, 'Show the correct solution');
+    let showing = false;
+    const hideCompare = () => { showing = false; compare.innerHTML = ''; reveal.textContent = 'Show the correct solution'; };
     reveal.addEventListener('click', () => {
-      const hidden = solver.classList.toggle('hide-solution');
-      reveal.textContent = hidden ? 'Show the correct solution' : 'Hide the correct solution';
-      if (!hidden) solver.querySelector('.paper') && solver.querySelector('.paper').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (showing) return hideCompare();
+      recompute();
+      const err = solver.querySelector('.callout.bad'), paper = solver.querySelector('.paper');
+      if (err || !paper) { status.textContent = 'Fix the problem numbers first: ' + (err ? err.textContent.replace(/^Can't solve this yet/, '').trim() : 'the app could not solve it.'); return; }
+      showing = true; reveal.textContent = 'Hide the correct solution';
+      compare.append(h('h2', { class: 'check-h', text: 'Correct solution' }),
+        photos.length ? h('div', { class: 'check-photos small' }, photos.map((p, k) => h('img', { src: p.url, alt: 'Photo ' + (k + 1) + ' of your solution' }))) : null,
+        h('p', { class: 'muted small', text: 'Compare line by line. The first line that differs from your paper is where to look.' }),
+        paper);
+      compare.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    const checkCard = h('div', { class: 'card' }, h('h2', { class: 'check-h', text: '4. Check' }), aiNote,
-      h('div', { class: 'row' }, checkBtn, stopBtn, reveal), status, sideBySide, result);
-    el.appendChild(checkCard);
+    el.appendChild(h('section', { class: 'card check-sec' }, num('3', 'Check'),
+      h('div', { class: 'check-ai' }, aiNote, aiLink),
+      h('div', { class: 'check-actions' }, checkBtn, stopBtn, reveal), status, result));
+    el.appendChild(compare);
 
-    sel.addEventListener('change', () => { UI.store.set('check-topic', sel.value); result.innerHTML = ''; status.textContent = ''; mountSolver(); });
+    sel.addEventListener('change', () => { UI.store.set('check-topic', sel.value); result.innerHTML = ''; status.textContent = ''; hideCompare(); mountSolver(); });
     mountSolver();
 
     /* Claude is only reachable inside the claude.ai viewer */
@@ -171,7 +180,8 @@
     aiNote.textContent = 'Looking for Claude…';
     const noAI = (why) => {
       ai = null; checkBtn.hidden = true;
-      aiNote.textContent = why || 'Automatic checking works in the claude.ai copy of this app. Here, compare your photo with the correct solution yourself.';
+      aiNote.textContent = why || 'Automatic checking needs Claude, so it works in your claude.ai copy of this app. Here, compare your photo with the correct solution yourself.';
+      if (aiLink && !why) aiLink.hidden = false;
       drawPhotos();
     };
     const use = window.claude && typeof window.claude.use === 'function' ? window.claude.use('sample') : Promise.resolve(null);
@@ -181,7 +191,7 @@
       if (!lim || !lim.images) return noAI('This view cannot send photos to Claude. Compare your photo with the correct solution yourself.');
       ai = sample; maxPhotos = Math.min(3, lim.images.maxCount || 1);
       checkBtn.hidden = false;
-      aiNote.textContent = 'Claude reads your handwriting and compares it with the correct steps. It uses your Claude account and takes about a minute.';
+      aiNote.textContent = 'Claude reads your handwriting and marks it against the correct steps. It uses your Claude account and takes about a minute.';
       drawPhotos();
     }).catch(() => noAI());
 

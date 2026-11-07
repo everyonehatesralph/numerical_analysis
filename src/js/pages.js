@@ -252,10 +252,11 @@
     const dp = UI.select({ label: 'Decimal places in answers', value: UI.settings.dp, options: [[4, '4'], [5, '5'], [6, '6 (default)'], [8, '8'], [10, '10']], onChange: (v) => { UI.settings.dp = +v; UI.saveSettings(); UI.toast('Saved'); } });
     const th = UI.select({ label: 'Theme', value: UI.settings.theme, options: [['auto', 'Match my phone (light or dark)'], ['light', 'Always light'], ['dark', 'Always dark']], onChange: (v) => { UI.settings.theme = v; UI.saveSettings(); UI.applyTheme(); } });
     const sz = UI.select({ label: 'Text size', value: UI.settings.size, options: [['normal', 'Normal'], ['large', 'Large'], ['xl', 'Extra large']], onChange: (v) => { UI.settings.size = v; UI.saveSettings(); UI.applySize(); } });
-    el.appendChild(h('div', { class: 'card' }, h('div', { class: 'form-grid' }, dp.el, th.el, sz.el)));
+    const kp = UI.select({ label: 'Calculator keypad', value: UI.settings.keypad || 'auto', options: [['auto', 'On phones and tablets'], ['on', 'Always'], ['off', 'Off (use the normal keyboard)']], onChange: (v) => { UI.settings.keypad = v; UI.saveSettings(); UI.toast('Saved'); } });
+    el.appendChild(h('div', { class: 'card' }, h('div', { class: 'form-grid' }, dp.el, th.el, sz.el, kp.el)));
     el.appendChild(h('h2', { text: 'Study focus and exam coverage' }));
     const focus = UI.select({ label: 'My current study focus', value: NM.CURRENT, options: NM.topics.map((t) => [t.id, t.title]), onChange: (v) => { UI.settings.focus = v; UI.saveSettings(); UI.refreshNav(); UI.toast('Study focus saved'); } });
-    const examName = h('input', { type: 'text', value: UI.settings.examName || '', placeholder: 'Semifinal', autocomplete: 'off' });
+    const examName = h('input', { type: 'text', value: UI.settings.examName || '', placeholder: 'Semifinal', autocomplete: 'off', 'data-kp': 'off' });
     examName.addEventListener('change', () => { UI.settings.examName = examName.value.trim(); UI.saveSettings(); UI.toast('Saved'); });
     const examDate = h('input', { type: 'date', value: UI.settings.examDate || '' });
     examDate.addEventListener('change', () => { UI.settings.examDate = examDate.value; UI.saveSettings(); });

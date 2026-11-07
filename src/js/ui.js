@@ -246,6 +246,8 @@
       if (shown < onScreen) nodes.slice(shown, onScreen).forEach((n) => n.remove());
       else nodes.slice(onScreen, shown).forEach((n, j) => { n.style.setProperty('--i', Math.min(j, 12)); ol.appendChild(n); });
       onScreen = shown;
+      // while stepping through, the newest step is marked so you can see where you are
+      nodes.forEach((n, j) => n.classList.toggle('latest', opt.reveal !== 'all' && j === shown - 1 && shown < steps.length));
       if (answer) answer.hidden = shown < steps.length;
       ctrl.innerHTML = '';
       if (shown === 0) {
@@ -260,7 +262,9 @@
       if (scroll && shown > 1) {
         const last = nodes[shown - 1];
         const r = last.getBoundingClientRect();
-        if (r.bottom > window.innerHeight - 90) window.scrollBy({ top: r.bottom - window.innerHeight + 120, behavior: 'smooth' });
+        // on a phone the pinned button bar and the tab bar cover the bottom of the screen
+        const covered = window.innerWidth <= 900 ? 170 : 90;
+        if (r.bottom > window.innerHeight - covered) window.scrollBy({ top: r.bottom - window.innerHeight + covered + 30, behavior: 'smooth' });
       }
       if (shown === steps.length && opt.onDone) opt.onDone();
     };
@@ -437,7 +441,7 @@
 
   /* ---------- inputs ---------- */
   UI.exprInput = (o) => {
-    const input = h('input', { type: 'text', class: 'mono', value: o.value || '', spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', 'aria-label': o.aria || 'function' });
+    const input = h('input', { type: 'text', class: 'mono', value: o.value || '', spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', 'aria-label': o.aria || 'function', 'data-kp': 'expr' });
     const und = h('div', { class: 'understood' });
     const el = h('label', { class: 'field' + (o.wide ? ' wide' : '') }, h('span', { html: o.label }), input, und);
     let cur = null;
@@ -675,7 +679,7 @@
         '<span>Practice target: 3 first-try solves</span>';
     };
     const picker = UI.seg([['mix', 'Mixed']].concat(gens.map((g, k) => [k, g.label])), 'mix', (v) => { which = v; fresh(); });
-    parent.appendChild(h('p', { class: 'muted', html: 'Solve on paper first, then type your answers to check them. Fractions like <code>-7/6</code> are fine; keep 4+ decimals; tiny numbers as <code>3.2e-5</code>.' }));
+    parent.appendChild(h('p', { class: 'muted', html: 'Solve on paper first, then enter your answers to check them. Type them the way you would on your calculator: fractions like −7/6, √, π and ×10<sup><i>x</i></sup> all work, and = turns a calculation into its value.' }));
     parent.appendChild(h('div', { class: 'row', style: { marginBottom: '10px' } }, picker));
     parent.appendChild(h('div', { style: { marginBottom: '12px' } }, score));
     const host = h('div');

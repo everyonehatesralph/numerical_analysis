@@ -166,10 +166,9 @@
     const prev = NM.topics[idx - 1], next = NM.topics[idx + 1];
     el.appendChild(h('div', { class: 'topic-head' },
       h('div', { class: 'meta' },
-        h('span', { class: 'badge ' + t.unit, text: 'Topic ' + t.num + ' · ' + NM.unitName(t.unit) }),
-        h('span', { class: 'badge', text: t.book }),
-        t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your study focus' }) : null,
-        UI.confirmedTopics().includes(t.id) ? h('span', { class: 'badge exam', text: 'On your ' + UI.examName().toLowerCase() + ' exam' }) : null),
+        h('span', { class: 'meta-line', text: 'Topic ' + t.num + ' · ' + NM.unitName(t.unit) + ' · ' + t.book }),
+        UI.confirmedTopics().includes(t.id) ? h('span', { class: 'badge exam', text: 'On your ' + UI.examName().toLowerCase() + ' exam' })
+          : t.id === NM.CURRENT ? h('span', { class: 'badge now', text: 'Your study focus' }) : null),
       h('h1', { text: t.title }),
       h('p', { class: 'tagline', html: t.tagline })));
     el.appendChild(h('nav', { class: 'tabbar', 'aria-label': 'Topic sections' },

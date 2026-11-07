@@ -4,6 +4,12 @@
   'use strict';
   const { E, UI } = NM, { h } = UI, R = UI.rand;
   const C = (NM.coach = {});
+  // the questions are plain text; typeset them for display: x2 → x₂, L1(4) → L₁(4), - → −, * → ×
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const pm = (s) => esc(s)
+    .replace(/\b([xyLcfP])(\d{1,2})\b/g, '<i>$1</i><sub>$2</sub>')
+    .replace(/(^|[\s(,=+\-−×÷*/[])([xt])(?=$|[\s),=+\-−×÷*/^\]]|<)/g, '$1<i>$2</i>')
+    .replace(/(^|[\s(])-(?=[\d(.π])/g, '$1−').replace(/ - /g, ' − ').replace(/\*/g, '×');
   const show = (v) => E.fmtShort(v, 12);
   const step = (label, expression, answer, explanation, extra) => Object.assign({ label, expression, answer, explanation }, extra || {});
   const op = (label, a, operator, b, explanation) => {
@@ -208,13 +214,13 @@
       if (i >= end) { finish(); return; }
       host.innerHTML = '';
       const s = q.steps[i], answerId = 'coach-answer', feedbackId = 'coach-feedback';
-      host.appendChild(h('h3', { text: q.title }));
-      host.appendChild(h('p', { text: q.prompt }));
+      host.appendChild(h('h3', { html: pm(q.title) }));
+      host.appendChild(h('p', { html: pm(q.prompt) }));
       host.appendChild(h('p', { class: 'coach-count', text: o.reviewId ? 'Retry one saved calculation · no timer' : 'Calculation ' + (i + 1) + ' of ' + q.steps.length + ' · no timer' }));
       const earlier = q.steps.slice(0, i);
-      if (earlier.length) host.appendChild(h('details', { class: 'coach-history' }, h('summary', { text: o.index ? 'Earlier values for this retry' : 'Your completed calculations' }), h('ol', null, earlier.map((s, k) => h('li', { text: s.label + ': ' + (s.choices ? s.choices[s.correct] : show(s.answer)) + (answers[k] === 'help' ? ' (shown with help)' : '') })))));
-      host.appendChild(h(s.choices ? 'p' : 'label', { class: 'coach-label', for: s.choices ? null : answerId, text: s.label }));
-      host.appendChild(h('div', { class: 'coach-expression', text: s.expression }));
+      if (earlier.length) host.appendChild(h('details', { class: 'coach-history' }, h('summary', { text: o.index ? 'Earlier values for this retry' : 'Your completed calculations' }), h('ol', null, earlier.map((s, k) => h('li', { html: pm(s.label + ': ' + (s.choices ? s.choices[s.correct] : show(s.answer)) + (answers[k] === 'help' ? ' (shown with help)' : '')) })))));
+      host.appendChild(h(s.choices ? 'p' : 'label', { class: 'coach-label', for: s.choices ? null : answerId, html: pm(s.label) }));
+      host.appendChild(h('div', { class: 'coach-expression', html: pm(s.expression) }));
       const feedback = h('div', { id: feedbackId, class: 'coach-feedback', role: 'status', 'aria-live': 'polite' });
       const hint = h('p', { class: 'coach-hint', hidden: true, text: s.explanation });
       const actions = h('div', { class: 'row coach-actions' });
