@@ -21,7 +21,7 @@
 (function (root) {
   'use strict';
   const NM = root.NM, UI = NM.UI, h = UI.h, Store = UI.store, M = UI.M;
-  const TRY = '<b>Your turn.</b> Work out the <b>?</b> on paper, then tap <b>Check</b>.';
+  const TRY = '<b>Your turn.</b> Work out the <b>?</b> on paper, then tap the right side of the board to check.';
   const hasRes = (html) => String(html).indexOf('class="res"') >= 0;
 
   /* ---------- the script: one beat per tap ---------- */
@@ -79,9 +79,12 @@
     exit: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
     sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    pencil: '<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
     down: '<path d="M7 10l5 5 5-5"/>',
   };
-  const HINT = 'Tap the <b>right side</b> of the board for the next move, the <b>left side</b> to go back. Drag the bar to jump anywhere.';
+  const HINT = 'Tap the <b>right side</b> of the board for the next move, the <b>left side</b> to go back. Drag the bar to jump, or press ▶ to let it play.';
+  // the topics whose problems can be typed in (problem.js), by the page's address: #/t/<topic>/…
+  const typedTopic = () => { const m = /#\/t\/([^/?]+)/.exec(root.location ? root.location.hash : ''); return m && NM.problem && NM.problem.TOPICS.includes(m[1]) ? m[1] : null; };
   const svg = (name, fill) => '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" ' +
     (fill ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"') + '>' + ICON[name] + '</svg>';
 
@@ -154,6 +157,9 @@
         else if (t.it && t.t === 'x' && t.w === p.w && (isNum(p.t) || numFr(p) || (p.t === '−' && u.toks.length === 1))) join = true; // 5x, ½x, −x
         else if (p.t === '−' && u.toks.length === 1 && (isNum(t.t) || numFr(t))) join = true; // −½
         else if ((t.t === '×' && isNum(p.t)) || (p.t === '×' && t.t === '10')) join = true; // 9.955×10⁻⁴
+        else if (t.t === 'π' && isNum(p.t)) join = true; // 2π
+        else if (t.t === '/' && (isNum(p.t) || p.t === 'π') && nx && !nx.gap && (isNum(nx.t) || nx.t === 'π')) join = true; // π/6 typed on one line
+        else if (p.t === '/' && u.toks.length >= 2 && (isNum(t.t) || t.t === 'π')) join = true;
       }
       if (join) {
         u.toks.push(t);
@@ -253,7 +259,8 @@
 
   UI.tutor = (parent, sol, opt) => {
     opt = opt || {};
-    const steps = sol.steps || [];
+    let steps = sol.steps || [];
+    let mine = sol.mine || null; // a problem typed in by the student: { text, said }
     const prefs = Object.assign({ cc: true, voice: false, tryFirst: true, size: 'symbol', speed: 1 }, Store.get('tutor', {}));
     if (!['symbol', 'part', 'line'].includes(prefs.size)) prefs.size = 'symbol';
     const save = () => Store.set('tutor', prefs);
@@ -288,10 +295,7 @@
     const ink = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     ink.setAttribute('class', 'tut-ink');
     ink.setAttribute('aria-hidden', 'true');
-    // the side of the board you tapped lights up for a moment
-    const edgeL = h('span', { class: 'tut-edge l', 'aria-hidden': 'true', html: svg('back') });
-    const edgeR = h('span', { class: 'tut-edge r', 'aria-hidden': 'true', html: svg('next') });
-    const view = h('div', { class: 'tut-view' }, screen, ink, edgeL, edgeR);
+    const view = h('div', { class: 'tut-view' }, screen, ink);
     const tool = (name, label, onclick, cls) => h('button', { class: 'tut-ico' + (cls ? ' ' + cls : ''), type: 'button', title: label, 'aria-label': label, html: svg(name), onclick });
     const closeBtn = tool('close', 'Close full screen', () => setFull(false), 'tut-close');
     const chNum = h('span', { class: 'tut-chn' }), chName = h('span', { class: 'tut-chname' });
@@ -301,17 +305,22 @@
     const setBtn = tool('sliders', 'Settings', () => sheet(sheetKind === 'settings' ? '' : 'settings'));
     setBtn.setAttribute('aria-haspopup', 'dialog');
     const fullBtn = tool('full', 'Full screen', () => setFull(true), 'tut-fullbtn');
-    const top = h('div', { class: 'tut-top' }, closeBtn, chBtn, h('div', { class: 'tut-tools' }, voiceBtn, setBtn, fullBtn));
+    const typeBtn = typedTopic() ? tool('pencil', 'Type your own problem', () => sheet(sheetKind === 'problem' ? '' : 'problem')) : null;
+    if (typeBtn) typeBtn.setAttribute('aria-haspopup', 'dialog');
+    const top = h('div', { class: 'tut-top' }, closeBtn, chBtn, h('div', { class: 'tut-tools' }, typeBtn, voiceBtn, setBtn, fullBtn));
     const cc = h('div', { class: 'tut-cc', 'aria-live': 'polite' });
     const track = h('div', { class: 'tut-track' });
     const thumb = h('span', { class: 'tut-thumb', 'aria-hidden': 'true' });
     const tip = h('span', { class: 'tut-tip', 'aria-hidden': 'true' });
     const bar = h('div', { class: 'tut-bar', role: 'slider', tabindex: '0', 'aria-label': 'Lesson progress', 'aria-valuemin': '0' }, track);
     const time = h('span', { class: 'tut-time', 'aria-hidden': 'true' });
-    const back = h('button', { class: 'btn tut-back', type: 'button', title: 'Back one move', 'aria-label': 'Back one move', html: svg('back') });
-    const next = h('button', { class: 'btn tut-next', type: 'button' });
-    const play = h('button', { class: 'btn tut-play', type: 'button' });
-    const dock = h('div', { class: 'tut-dock' }, cc, h('div', { class: 'tut-prog' }, bar, time), h('div', { class: 'tut-ctrl' }, back, next, play));
+    // you move by tapping the board; these two buttons are for the keyboard and screen readers,
+    // and show only while one of them has the keyboard focus
+    const back = h('button', { class: 'tut-key', type: 'button', html: svg('back') + '<span>Back</span>' });
+    const next = h('button', { class: 'tut-key', type: 'button' });
+    back.setAttribute('aria-label', 'Back one move');
+    const play = h('button', { class: 'tut-play', type: 'button' });
+    const dock = h('div', { class: 'tut-dock' }, cc, h('div', { class: 'tut-prog' }, bar, time, play), h('div', { class: 'tut-keys' }, back, next));
     // settings and the chapter list open as a sheet over the player; a tap outside closes it
     const scrim = h('div', { class: 'tut-scrim', hidden: true, onclick: () => sheet('') });
     const panel = h('div', { class: 'tut-sheet', hidden: true, role: 'dialog', tabindex: '-1' });
@@ -325,12 +334,14 @@
       sheetKind = kind || '';
       panel.innerHTML = '';
       panel.hidden = scrim.hidden = !sheetKind;
+      panel.classList.toggle('tall', sheetKind === 'problem');
       if (sheetKind === 'settings') drawSettings();
       else if (sheetKind === 'chapters') drawChapters();
+      else if (sheetKind === 'problem') drawProblem();
       tools();
       if (sheetKind) {
         if (!was) sheetFrom = document.activeElement;
-        const f = panel.querySelector('[aria-current]') || panel;
+        const f = panel.querySelector('textarea') || panel.querySelector('[aria-current]') || panel;
         f.focus({ preventScroll: true });
       } else if (was && sheetFrom && sheetFrom.isConnected) { sheetFrom.focus({ preventScroll: true }); sheetFrom = null; }
     }
@@ -357,6 +368,52 @@
       panel.setAttribute('aria-label', 'Chapters');
       panel.append(sheetHead('Chapters'), chapterList((ch) => { sheet(''); jump(ch.m0); }));
     }
+    /* your own problem: type it in words or equations; it says back what it read, then solves */
+    let typed = '';
+    function drawProblem() {
+      panel.setAttribute('aria-label', 'Type your own problem');
+      const topic = typedTopic();
+      const box = h('textarea', { class: 'tut-pin', rows: '5', 'aria-label': 'Your problem', 'aria-describedby': 'tut-said', spellcheck: 'false', autocapitalize: 'sentences',
+        placeholder: 'Type or paste the question, in words or equations.' });
+      box.value = typed;
+      const said = h('p', { class: 'tut-said', id: 'tut-said', 'aria-live': 'polite' });
+      const solve = h('button', { class: 'btn tut-solve', type: 'button' }, 'Solve it step by step');
+      let got = null;
+      const check = () => {
+        got = NM.problem.read(box.value, topic);
+        said.innerHTML = got.ok ? '<b class="ok">I read it as:</b> ' + got.said : got.error || 'For example: <i>' + NM.problem.EXAMPLE[topic] + '</i>';
+        said.classList.toggle('bad', !got.ok && !!got.error);
+        solve.disabled = !got.ok;
+      };
+      let wait = 0;
+      box.addEventListener('input', () => { clearTimeout(wait); wait = setTimeout(check, 180); });
+      const tryOne = (t) => h('button', { type: 'button', class: 'tut-ex', onclick: () => { box.value = NM.problem.EXAMPLE[t]; check(); box.focus({ preventScroll: true }); } }, NM.problem.EXAMPLE[t]);
+      solve.addEventListener('click', () => {
+        check();
+        if (!got || !got.ok) return;
+        let s;
+        try { s = got.build(); } catch (e) { said.innerHTML = 'I read it, but could not solve it: ' + e.message; said.classList.add('bad'); return; }
+        typed = box.value;
+        const info = { text: box.value, said: got.said };
+        sheet('');
+        load(s, info);
+      });
+      panel.append(sheetHead('Your own problem'), box, said, solve,
+        h('p', { class: 'tut-set-l', text: 'Or start from an example' }), h('div', { class: 'tut-exs' }, NM.problem.TOPICS.map(tryOne)));
+      check();
+    }
+    // swap in a new solution (a typed problem) without leaving full screen
+    function load(s, info) {
+      stopPlay();
+      if (synth) synth.cancel();
+      sol = s;
+      steps = sol.steps || [];
+      mine = sol.mine = info || null;
+      model = build();
+      drawBar();
+      go(-1, false);
+      if (opt.onSol) opt.onSol(s);
+    }
     function rebuild() {
       const bi = i < 0 ? -1 : model.moves[i].b, nBeats = model.beats.length;
       const c = bi < 0 ? -1 : model.beats[bi].c;
@@ -371,7 +428,8 @@
     let segs = [];
     const chapterOf = (m) => (m < 0 || !model.moves[m] ? -1 : model.beats[model.moves[m].b].c);
     function drawBar() {
-      segs = model.chapters.map((ch) => h('span', { class: 'tut-seg', style: { flexGrow: String(Math.max(1, Math.sqrt(ch.m1 - ch.m0))) } }, h('span', { class: 'tut-fill' })));
+      // each chapter as long as its share of the moves, so the handle shows exactly how far you are
+      segs = model.chapters.map((ch) => h('span', { class: 'tut-seg', style: { flexGrow: String(ch.m1 - ch.m0) } }, h('span', { class: 'tut-fill' })));
       track.innerHTML = '';
       track.append(...segs, thumb, tip);
       bar.setAttribute('aria-valuemax', String(model.moves.length));
@@ -478,6 +536,18 @@
           h('th', { html: r.label }),
           r.cells.map((c, k) => h('td', { class: focus[r.key] && focus[r.key][k] ? 'pen-' + focus[r.key][k] : null, html: c, 'data-gk': r.key + ':' + k }))))))));
       }
+      // what to remember before solving (calculator mode, the rule people forget); tap one for why
+      if (g.remember && g.remember.length) {
+        given.appendChild(h('div', { class: 'tut-rem', role: 'group', 'aria-label': 'Remember' }, h('span', { class: 'tut-rem-l', 'aria-hidden': 'true', text: 'Remember' }),
+          g.remember.map((r) => h('button', { type: 'button', class: 'tut-chip', 'aria-label': r.short + ': show why', onclick: () => remind(r) }, r.short))));
+      }
+    }
+    // a reminder's full text, in the note area until the next move
+    function remind(r) {
+      cc.innerHTML = '';
+      cc.className = 'tut-cc rem fresh';
+      cc.append(h('p', { class: 'tut-try' }, h('b', { text: 'Remember: ' + r.short }), h('span', { html: r.long })));
+      cc.hidden = false;
     }
     const markNewest = (units, anim) => (units || []).forEach((e) => { e.classList.add('tk-now'); if (anim) e.classList.add('tk-in'); });
     // a line written up to `shown` moves
@@ -525,14 +595,19 @@
       spokenHTML = P.units[shown - 1] && prefs.size === 'symbol' ? P.units[shown - 1].map((e) => e.innerHTML).join(' ') : '';
       return P.node;
     }
-    // before the start: the chapters (tap one to start there), and how to move, in the note area
+    // before the start: your problem (if you typed one), Start, what to remember, every chapter
     function cover() {
       el.classList.add('cover');
       drawGiven(null);
       const per = prefs.size === 'symbol' ? 'one symbol' : prefs.size === 'part' ? 'one part' : 'one line';
+      const rem = (sol.given && sol.given.remember) || [];
       stage.appendChild(h('div', { class: 'tut-cover' },
+        mine ? h('div', { class: 'tut-mine' }, h('p', { class: 'tut-mine-q', text: mine.text }), h('p', { class: 'tut-mine-r', html: 'I read it as: ' + mine.said })) : null,
         h('h3', { text: 'Solved one move at a time' }),
         h('p', { class: 'tut-cover-t', text: model.chapters.length + ' chapters · ' + model.moves.length + ' moves · ' + per + ' per tap' }),
+        h('button', { class: 'btn tut-start', type: 'button', onclick: () => start() }, 'Start', h('span', { html: svg('next') })),
+        rem.length ? h('div', { class: 'tut-before' }, h('h4', { text: 'Before you start' }), h('ul', null, rem.map((r) => h('li', null, h('b', { text: r.short }), h('span', { html: r.long }))))) : null,
+        h('h4', { class: 'tut-ch-h', text: 'Chapters' }),
         chapterList((ch) => jump(ch.m0))));
     }
     let shownBeat = -2;
@@ -564,7 +639,8 @@
         drawGiven(null);
         stage.appendChild(h('div', { class: 'tut-answer' + (anim ? ' enter' : '') }, h('div', { class: 'tut-kicker', text: 'Answer' }),
           sol.answer.map((l) => h('div', { class: 'ln', html: UI.lineHTML(l) })),
-          h('p', { class: 'tut-done', text: 'Done. Drag the bar or open the chapter list at the top to watch any part again.' })));
+          h('p', { class: 'tut-done', text: 'Done. Drag the bar or open the chapter list at the top to watch any part again.' }),
+          h('button', { class: 'btn tut-start', type: 'button', onclick: () => start() }, 'Watch again', h('span', { html: svg('again') }))));
       } else {
         const s = steps[b.c], t = s.tut || {};
         drawGiven(focusAt(bi), t.noGiven);
@@ -643,7 +719,7 @@
           h('div', { class: 'tut-why' }, row('From', card.o.from), row('Why', card.o.why)));
       } else if (asking()) {
         cc.classList.add('ask');
-        cc.append(h('p', { class: 'tut-try' }, h('b', { text: 'Your turn' }), h('span', { html: 'Work out the <b>?</b> on paper, then tap <b>Check</b>.' })));
+        cc.append(h('p', { class: 'tut-try' }, h('b', { text: 'Your turn' }), h('span', { html: 'Work out the <b>?</b> on paper, then tap the <b>right side</b> of the board to check.' })));
       } else if (say) cc.append(h('p', { class: 'tut-cap', html: say }));
       cc.hidden = !prefs.cc;
     }
@@ -718,6 +794,7 @@
       if (voiceBtn) { voiceBtn.setAttribute('aria-pressed', String(prefs.voice)); voiceBtn.innerHTML = svg(prefs.voice ? 'voice' : 'mute'); }
       setBtn.setAttribute('aria-expanded', String(sheetKind === 'settings'));
       chBtn.setAttribute('aria-expanded', String(sheetKind === 'chapters'));
+      if (typeBtn) typeBtn.setAttribute('aria-expanded', String(sheetKind === 'problem'));
     }
     function controls() {
       const last = model.moves.length - 1, ask = asking(), c = chapterOf(i), n = model.chapters.length;
@@ -725,11 +802,11 @@
       const label = i < 0 ? 'Start' : i === last ? 'Watch again' : ask ? 'Check' : 'Next';
       next.innerHTML = '<span>' + label + '</span>' + svg(i === last ? 'again' : 'next');
       next.setAttribute('aria-label', label === 'Next' ? 'Next move' : label === 'Check' ? 'Check: show the answer' : label);
-      next.classList.toggle('ask', ask);
-      play.innerHTML = svg(playing ? 'pause' : 'play', true);
-      play.setAttribute('aria-label', playing ? 'Pause' : 'Play by itself');
-      play.title = playing ? 'Pause' : 'Play by itself';
-      play.disabled = i === last;
+      // play by itself; at the end it plays again from the start
+      const done = i === last && !playing;
+      play.innerHTML = svg(playing ? 'pause' : done ? 'again' : 'play', !done);
+      play.setAttribute('aria-label', playing ? 'Pause' : done ? 'Watch again' : 'Play by itself');
+      play.title = play.getAttribute('aria-label');
       time.textContent = Math.max(0, i + 1) + ' / ' + model.moves.length;
       chNum.textContent = c < 0 ? '' : (c + 1) + '/' + n;
       chName.innerHTML = c < 0 ? n + ' chapters' : model.chapters[c].title;
@@ -767,11 +844,10 @@
       active = api;
       if (playing) return stopPlay();
       playing = true;
-      if (i < 0 || asking()) forward(); else { begin(); schedule(); }
+      if (i < 0 || asking() || i === model.moves.length - 1) forward(); else { begin(); schedule(); }
       controls();
     });
     // the board itself: a tap on its right side goes on, on its left side goes back
-    const edge = (e) => { if (reduced()) return; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); };
     view.addEventListener('click', (e) => {
       if (e.target.closest && e.target.closest('button, a, input, select, textarea, summary, label')) return;
       const r = view.getBoundingClientRect();
@@ -779,12 +855,10 @@
         if (i < 0) return;
         stopPlay();
         active = api;
-        edge(edgeL);
         go(i - 1, false);
       } else {
         if (i === model.moves.length - 1) return;
         stopPlay();
-        edge(edgeR);
         forward();
       }
     });
@@ -855,7 +929,7 @@
         return;
       }
       if (e.key === 'Tab' && el.classList.contains('full')) {
-        const f = [...el.querySelectorAll('button, [tabindex="0"]')].filter((x) => !x.disabled && x.offsetParent !== null && !x.closest('[hidden]'));
+        const f = [...el.querySelectorAll('button, textarea, [tabindex="0"]')].filter((x) => !x.disabled && x.offsetParent !== null && !x.closest('[hidden]'));
         const first = f[0], last = f[f.length - 1];
         if (!first) return;
         if (e.shiftKey && (document.activeElement === first || document.activeElement === el)) { e.preventDefault(); last.focus(); }

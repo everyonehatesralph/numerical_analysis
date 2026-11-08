@@ -550,5 +550,6 @@
   topic.practice = [g1, g2, g3, g4, g5, g6];
   topic.walkFor = nddWalk;
   topic.triangle = triangle;
+  IP.nddBoard = nddBoard; // for a problem typed into the tutorial (problem.js)
   NM.registerTopic(topic);
 })(window.NM);

@@ -316,7 +316,21 @@
   IP.given = (xs, ys, extra) => ({
     rows: [{ key: 'k', label: 'point', cells: xs.map((_, k) => String(k + 1)) }, { key: 'x', label: '<i>x</i>', cells: xs.map((x) => IP.v(x)) }, { key: 'y', label: '<i>y</i>', cells: ys.map((y) => IP.v(y)) }],
     extra: extra || null,
+    remember: IP.remember({ exact: xs.concat(ys).every((v) => v instanceof E.Q), n: xs.length }),
   });
+  /* What to remember before solving (shown with the given numbers in the tutorial): the
+     calculator setting the numbers need (fx-991EX keys) and the one rule people forget.
+     o = { trig, exp, exact, n, error } */
+  IP.remember = (o) => {
+    const r = [];
+    if (o.trig) r.push({ key: 'rad', short: 'Radian mode', long: 'This problem has sin, cos or π, so set the calculator to radians: <b>SHIFT</b>, <b>MENU</b> (SETUP) → Angle Unit → Radian. An <b>R</b> shows at the top of the screen. In degree mode every value comes out wrong.' });
+    if (o.exact) r.push({ key: 'frac', short: 'Keep fractions', long: 'Every number here is a whole number or a fraction, so keep the answers as exact fractions: SETUP → Input/Output → MathI/MathO. <b>S⇔D</b> turns a fraction into a decimal when you need one.' });
+    else r.push({ key: 'dec', short: 'Round at the end', long: 'Keep every digit while you work: use <b>Ans</b>, or store a value with <b>STO</b>. Round only the final answer, or the last digits drift.' });
+    if (o.exp) r.push({ key: 'exp', short: 'eˣ key', long: 'For <i>e</i><sup><i>x</i></sup> use the <b>e<sup>■</sup></b> key (<b>SHIFT</b> then <b>ln</b>), not 2.718. <i>e</i><sup>1</sup> is just <i>e</i>.' });
+    if (o.n && o.error) r.push({ key: 'n', short: 'n = ' + o.n + ' nodes', long: '<i>n</i> is the number of nodes, not the degree: ' + o.n + ' nodes means the ' + o.n + (o.n === 2 ? 'nd' : o.n === 3 ? 'rd' : 'th') + ' derivative and ' + o.n + '!.' });
+    else if (o.n) r.push({ key: 'deg', short: 'Degree ≤ ' + (o.n - 1), long: o.n + ' points give exactly one polynomial of degree at most ' + (o.n - 1) + ': one less than the number of points.' });
+    return r;
+  };
   IP.and = (a) => (a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]);
   const inTable = (IP.inTable = (name, k, v) => M.v(name, k + 1) + ' = ' + IP.v(v) + ' in the table');
   // a top bracket (x − xj) with its number in blue; id names the whole bracket
@@ -744,5 +758,6 @@
   g4.noExample = true;
   topic.practice = [g1, g2, g3, g4];
   topic.walkFor = lagrangeWalk;
+  IP.lagrangeBoard = lagrangeBoard; // for a problem typed into the tutorial (problem.js)
   NM.registerTopic(topic);
 })(window.NM);

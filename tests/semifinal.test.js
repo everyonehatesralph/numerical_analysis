@@ -13,6 +13,7 @@ function app(storage) {
   fs.readdirSync(path.join(__dirname, '../src/js/topics')).filter((f) => /^t\d/.test(f)).sort().forEach((f) => load('src/js/topics/' + f));
   ctx.addEventListener = () => {};
   load('src/js/tutor.js');
+  load('src/js/problem.js');
   return ctx;
 }
 
@@ -144,6 +145,42 @@ test('tutorial captions and highlights line up with the book examples', () => {
 });
 test('tutorial captions line up on 300 random practice solutions', () => {
   [lag, ndd, err].forEach((t) => t.practice.forEach((g) => { for (let k = 0; k < 25; k++) { const q = g(); if (q.board) tutorOK(q.board(), t.id + ' / ' + q.type); } }));
+});
+
+/* a problem typed in words or equations (problem.js): read right, solved like the book */
+test('typed problems are read and solved', () => {
+  const P = NM.problem;
+  const solved = (text, prefer) => { const r = P.read(text, prefer); assert(r.ok, '"' + text + '" was not read: ' + plain(r.error || '')); return { r, b: r.build() }; };
+  let s = solved('Find the Lagrange polynomial through (0, 1), (2, 2), (3, 4) and P(1).', 'ndd');
+  assert.strictEqual(s.r.topic, 'lagrange');
+  assert.strictEqual(plain(s.b.answer[0]), 'P(x) = 1/2x^2 − 1/2x + 1');
+  assert.strictEqual(plain(s.b.answer[1]), 'P(1) = 1');
+  s = solved('Carbon dioxide (ppm): 280 in 1800, 283 in 1850, 291 in 1900, 370 in 2000. Estimate it in 1950 and 2050.', 'ndd');
+  assert.strictEqual(plain(s.b.answer[1]), 'P(1950) = 316');
+  assert.strictEqual(plain(s.b.answer[2]), 'P(2050) = 465');
+  s = solved('An industrial fan lasts 75, 63 and 54 (×1000 hours) at 40, 50 and 60 °C. Estimate its lifetime at 70 °C.', 'lagrange');
+  assert(plain(s.b.answer.at(-1)).endsWith('= 48'), 'fan: ' + plain(s.b.answer.at(-1)));
+  s = solved('Bound the error of f(x) = e^x at x = 0.25 with nodes −1, −0.5, 0, 0.5, 1.', 'lagrange');
+  assert.strictEqual(s.r.topic, 'interp-error');
+  assert.strictEqual(plain(s.b.answer[0]), '|f(0.25) − P(0.25)| ≤ 9.955×10^−4 = 0.0009955');
+  assert.deepStrictEqual([...s.b.given.remember.map((x) => x.key)], ['dec', 'exp', 'n']);
+  s = solved('f(x) = sin x, nodes 0, π/6, π/3, π/2, bound the error at x = 1', 'interp-error');
+  assert.strictEqual(plain(s.b.answer[0]), '|f(1) − P(1)| ≤ 5.348×10^−4 = 0.0005348');
+  assert.strictEqual(s.b.given.remember[0].key, 'rad', 'sin needs radian mode');
+  s = solved('x = 0, 2, 3, 1 and y = 1, 2, 4, 0. Use divided differences.', 'lagrange');
+  assert.strictEqual(s.r.topic, 'ndd');
+  s = solved('f(0)=1, f(2)=2, f(3)=4. Find P(1).', 'lagrange');
+  assert.strictEqual(plain(s.b.answer[1]), 'P(1) = 1');
+  s = solved('Find P(1.5) through (1, 2.5), (2, 3.1), (3, 4.0)', 'lagrange');
+  assert.strictEqual(s.b.given.remember[0].key, 'dec', 'decimals in, decimals out');
+  assert(!P.read('x = 1, 2, 3; y = 4, 5', 'lagrange').ok);
+  assert(/3 x-values but 2 y-values/.test(P.read('x = 1, 2, 3; y = 4, 5', 'lagrange').error));
+  assert(/interpolation problems only/.test(P.read('Use Newton\'s method to find a root of x^3 − 2x − 5', 'lagrange').error));
+  assert(!P.read('hello', 'lagrange').ok);
+});
+test('every example says what to remember', () => {
+  [lag, ndd, err].forEach((t) => t.examples.forEach((ex) => { const b = ex.solve(); assert(b.given.remember && b.given.remember.length, t.id + ': no reminders'); }));
+  assert.strictEqual(err.examples[2].solve().given.remember[0].key, 'rad', 'the sin example needs radian mode');
 });
 
 test('first visit: the semifinal topics are the exam list', () => {

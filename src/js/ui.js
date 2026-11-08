@@ -241,10 +241,12 @@
     if (!UI.tutor || (forced && forced.getAttribute('data-sol-mode') === 'board')) return UI.board(parent, sol, opt);
     let mode = Store.get('sol-mode', 'tutor');
     const host = h('div', { class: 'sol-host' });
+    // a problem typed into the tutorial replaces the solution, so Written shows it too
+    const tutOpt = Object.assign({}, opt, { onSol: (s) => { sol = s; } });
     const draw = () => {
       if (UI.tutorStop) UI.tutorStop();
       host.innerHTML = '';
-      if (mode === 'board') UI.board(host, sol, opt); else UI.tutor(host, sol, opt);
+      if (mode === 'board') UI.board(host, sol, opt); else UI.tutor(host, sol, tutOpt);
     };
     // the "Solution" label shares a row with the switch
     const kick = parent.lastElementChild && parent.lastElementChild.classList.contains('kicker') ? parent.lastElementChild : null;

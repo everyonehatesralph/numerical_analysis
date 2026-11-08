@@ -155,6 +155,7 @@
       given: {
         rows: [{ key: 'k', label: 'node', cells: nodes.map((_, k) => String(k + 1)) }, { key: 'x', label: '<i>x</i>', cells: nodes }],
         extra: [{ key: 'f', html: '<i>f</i>(<i>x</i>) = ' + fc.html }, { key: 't', html: 'error at <i>x</i> = ' + X }],
+        remember: IP.remember({ trig: /sin|cos|tan|pi|π/.test(fc.text + ' ' + nodes.join(' ')), exp: /e\^|exp/.test(fc.text), exact: false, n, error: true }),
       },
     };
   }
@@ -326,5 +327,6 @@
   g2.label = 'Concept';
   g2.noExample = true;
   topic.practice = [g1, g2];
+  NM.interp.errorBoard = errorBoard; // for a problem typed into the tutorial (problem.js)
   NM.registerTopic(topic);
 })(window.NM);
