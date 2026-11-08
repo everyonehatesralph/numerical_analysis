@@ -201,4 +201,41 @@ test('a list the student already chose is kept', () => {
   assert.deepStrictEqual([...c.NM.UI.confirmedTopics()], ['spline', 'diff']);
 });
 
+/* the tutorial's arrows: around the writing, square to both ends, the head on the target */
+test('arrows go around the writing and point straight at the new piece', () => {
+  const route = NM.UI.inkRoute, box = (l, t, r, b) => ({ l, t, r, b });
+  const ends = (w) => {
+    const [a, tip, c] = w.head, base = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+    return { tip, base };
+  };
+  // nothing in the way: one straight line down, the tip just above the target's middle
+  let w = route({ w: 390, h: 600, src: box(100, 40, 120, 60), dst: box(100, 300, 120, 322), gap: [3, 3, 7, 3] });
+  assert(w, 'a route on a clear board');
+  assert.strictEqual(w.turns, 0);
+  assert.strictEqual(w.cross, 0);
+  assert.deepStrictEqual(Array.from(ends(w).tip, Math.round), [110, 297]);
+  // a line of writing in the way, with a gap: the arrow uses the gap
+  const wall = [box(16, 150, 180, 172), box(204, 150, 380, 172)];
+  w = route({ w: 390, h: 600, src: box(60, 40, 80, 60), dst: box(290, 300, 310, 322), blocks: wall });
+  assert.strictEqual(w.cross, 0, 'goes through the gap');
+  const mid = w.pts.find((p, k) => k && (w.pts[k - 1].y - 161) * (p.y - 161) <= 0);
+  assert(mid && mid.x > 180 && mid.x < 204, 'passes the line at the gap, at x = ' + (mid && mid.x));
+  // no way round: it still arrives, crossing as little as it can (one line's height)
+  w = route({ w: 390, h: 600, src: box(100, 40, 120, 60), dst: box(100, 300, 120, 322), blocks: [box(0, 150, 390, 172)] });
+  assert(w && w.cross > 0 && w.cross <= 8, 'crosses the full-width line once, straight through: ' + (w && w.cross));
+  // a target in a fraction's bottom, with its top right above: the arrow comes from the side, not through the top
+  const top = box(100, 260, 160, 282), bar = box(100, 283, 160, 285), dst = box(118, 287, 142, 309);
+  w = route({ w: 390, h: 600, src: box(250, 60, 270, 80), dst, blocks: [top, bar], gap: [3, 3, 7, 3] });
+  const e = ends(w);
+  assert.strictEqual(w.cross, 0);
+  assert(!(e.tip[1] < dst.t && e.tip[0] > dst.l && e.tip[0] < dst.r), 'does not land on the top of the fraction');
+  // every arrow ends square to the target: the head's base and tip share an x or a y
+  [w].forEach((x) => { const q = ends(x); assert(Math.abs(q.tip[0] - q.base[0]) < 0.01 || Math.abs(q.tip[1] - q.base[1]) < 0.01); });
+  // two arrows to one piece take different lanes
+  const used = new Uint8Array(Math.ceil(390 / 4) * Math.ceil(600 / 4));
+  const a1 = route({ w: 390, h: 600, src: box(60, 40, 80, 60), dst: box(180, 300, 220, 322), used });
+  const a2 = route({ w: 390, h: 600, src: box(320, 40, 340, 60), dst: box(180, 300, 220, 322), used });
+  assert.notDeepStrictEqual(Array.from(ends(a1).tip), Array.from(ends(a2).tip), 'two heads on one spot');
+});
+
 console.log(checks + ' semifinal checks passed (book examples, 600 random solutions, settings update).');

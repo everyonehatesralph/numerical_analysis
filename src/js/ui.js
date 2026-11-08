@@ -118,19 +118,18 @@
   // flipping dark mode on the phone (Control Center, or sunset) restyles the open page in place
   if (DARK_MQ && DARK_MQ.addEventListener) DARK_MQ.addEventListener('change', () => { if (UI.settings.theme === 'auto') UI.applyTheme(); });
 
-  /* ---------- logo: a smooth curve through three points, the last one yellow like a boxed answer ---------- */
+  /* ---------- logo: ≈, "approximately" (what numerical methods give you), in the yellow answer box ---------- */
   const LOGO_COLORS = {
-    light: { tile: '#111111', ink: '#fbfbfa', hl: '#f2c94c' },
-    dark: { tile: '#ededec', ink: '#191919', hl: '#d4961f' },
+    light: { tile: '#f2c94c', ink: '#17160f' },
+    dark: { tile: '#f2c94c', ink: '#17160f' },
   };
-  // c = explicit colours (tab icon); without it, .logo in styles.css paints it in the page's theme colours
-  UI.logo = (c) => {
+  // c = explicit colours (tab icon, app icons); without it, .logo in styles.css paints it.
+  // rx = corner radius out of 64: 0 for a home-screen icon, which the phone rounds itself
+  UI.logo = (c, rx) => {
     const a = (attrs) => (c ? ' ' + attrs : '');
+    const wave = (y) => '<path d="M15.5 ' + y + 'c5.4-6.4 11.4-6.4 16.5 0s11.1 6.4 16.5 0" fill="none" stroke-width="5.6" stroke-linecap="round"' + a('stroke="' + (c && c.ink) + '"') + '/>';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"' + (c ? '' : ' class="logo" aria-hidden="true"') + '>' +
-      '<rect width="64" height="64" rx="14"' + a('fill="' + (c && c.tile) + '"') + '/>' +
-      '<path d="M12 42C15 30 19 22 24 22S35 42 40 42S49 34 52 22" fill="none" stroke-width="3.8" stroke-linecap="round"' + a('stroke="' + (c && c.ink) + '"') + '/>' +
-      '<g' + a('fill="' + (c && c.ink) + '"') + '><circle cx="12" cy="42" r="4"/><circle cx="32" cy="32" r="4"/></g>' +
-      '<circle class="hl" cx="52" cy="22" r="5"' + a('fill="' + (c && c.hl) + '"') + '/></svg>';
+      '<rect width="64" height="64" rx="' + (rx === undefined ? 14 : rx) + '"' + a('fill="' + (c && c.tile) + '"') + '/>' + wave(26.5) + wave(38.5) + '</svg>';
   };
 
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };

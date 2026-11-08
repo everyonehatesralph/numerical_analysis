@@ -94,6 +94,170 @@
   UI.tutorStop = () => { if (active) active.stop(); };
   root.addEventListener('hashchange', () => UI.tutorStop());
 
+  /* ---------- an arrow's route: around the writing, square turns with rounded corners ----------
+     o = { w, h }            the board's size in px
+         src, dst            the source and target boxes { l, t, r, b }, in board px
+         blocks              boxes of writing to keep clear of
+         slow                boxes to cross only if it saves a lot (the pinned given strip)
+         srcGap, gap         space left at the source, and at the target's [top, right, bottom, left]
+         used                cells an earlier arrow took (Uint8Array, filled in), so two arrows don't share a lane
+     The board is a 4 px grid. A step costs 1, a turn 8, a step through writing 14, a step right beside
+     writing a little more than 1: the line takes the clear gaps when there are any and crosses as little
+     writing as it can when there aren't. It leaves the source and enters the target at a right angle,
+     aimed at the target's middle (or near it, if that saves a turn), so the head never lands on the
+     wrong line. Returns { d, head: [[x, y] ×3], cross: cells of writing crossed, turns } or null. */
+  const CELL = 4, TURN = 8, CROSS = 14;
+  UI.inkRoute = (whole) => {
+    // only the band of the board around the two ends (plus room to go round) is searched
+    const oy = Math.max(0, Math.floor((Math.min(whole.src.t, whole.dst.t) - 96) / CELL) * CELL);
+    const down = (b) => ({ l: b.l, r: b.r, t: b.t - oy, b: b.b - oy });
+    const o = Object.assign({}, whole, {
+      h: Math.min(whole.h, Math.max(whole.src.b, whole.dst.b) + 96) - oy,
+      src: down(whole.src), dst: down(whole.dst), blocks: (whole.blocks || []).map(down), slow: (whole.slow || []).map(down),
+    });
+    const W = Math.max(1, Math.ceil(o.w / CELL)), H = Math.max(1, Math.ceil(o.h / CELL)), N = W * H, uo = (oy / CELL) * W;
+    const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0]; // top, right, bottom, left: the sides, and the ways out of them
+    const hard = new Uint8Array(N), cost = new Float32Array(N);
+    const cells = (b, pad, fn) => {
+      const c0 = Math.max(0, Math.floor((b.l - pad) / CELL)), c1 = Math.min(W - 1, Math.ceil((b.r + pad) / CELL) - 1);
+      const r0 = Math.max(0, Math.floor((b.t - pad) / CELL)), r1 = Math.min(H - 1, Math.ceil((b.b + pad) / CELL) - 1);
+      for (let y = r0; y <= r1; y++) for (let x = c0; x <= c1; x++) fn(y * W + x);
+    };
+    (o.blocks || []).forEach((b) => cells(b, 1, (k) => { hard[k] = 1; }));
+    cells(o.src, 2, (k) => { hard[k] = 1; });
+    cells(o.dst, 2, (k) => { hard[k] = 1; });
+    // a little dearer right beside writing, so the line keeps to the middle of a gap
+    const near = new Uint8Array(N);
+    for (let k = 0; k < N; k++) {
+      if (!hard[k]) continue;
+      const x = k % W, y = (k - x) / W;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+        const v = Math.max(Math.abs(dx), Math.abs(dy)) <= 1 ? 2 : 1;
+        if (near[Y * W + X] < v) near[Y * W + X] = v;
+      }
+    }
+    for (let k = 0; k < N; k++) {
+      const x = (k % W) * CELL + CELL / 2;
+      cost[k] = hard[k] ? CROSS : near[k] === 2 ? 2.2 : near[k] === 1 ? 1.4 : 1;
+      const y = Math.floor(k / W) * CELL + CELL / 2 + oy;
+      if (x < 8 || x > o.w - 8 || y < 8 || y > whole.h - 10) cost[k] += 3; // off the board's very edges
+      if (o.used && o.used[k + uo]) cost[k] += 3;
+    }
+    (o.slow || []).forEach((b) => cells(b, 0, (k) => { cost[k] += 4; }));
+    const at = (x, y) => { const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL); return cx < 0 || cy < 0 || cx >= W || cy >= H ? -1 : cy * W + cx; };
+    // what a straight piece from (ax, ay) to (bx, by) costs, in steps
+    const along = (ax, ay, bx, by) => {
+      const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 2));
+      let s = 0;
+      for (let k = 0; k <= n; k++) { const c = at(ax + (bx - ax) * k / n, ay + (by - ay) * k / n); s += c < 0 ? 40 : cost[c]; }
+      return s * Math.hypot(bx - ax, by - ay) / (n + 1) / CELL;
+    };
+    // points on a side: the middle, then a little either way (each px off the middle costs a bit)
+    const spots = (b, side, gap) => {
+      const vert = side === 0 || side === 2, mid = vert ? (b.l + b.r) / 2 : (b.t + b.b) / 2;
+      const reach = Math.max(0, (vert ? b.r - b.l : b.b - b.t) * 0.3), out = [];
+      for (let a = 0; a <= reach + 0.01; a += CELL) for (const s of a ? [a, -a] : [0]) {
+        const v = mid + s;
+        out.push({ x: vert ? v : side === 1 ? b.r + gap : b.l - gap, y: vert ? (side === 0 ? b.t - gap : b.b + gap) : v, off: Math.abs(s) * 0.15, side });
+      }
+      return out;
+    };
+    const STUB = 6, HEAD = 7, HALF = 4, gaps = o.gap || [3, 3, 3, 3];
+    const starts = [], goals = [];
+    for (let s = 0; s < 4; s++) spots(o.src, s, o.srcGap || 4).forEach((p) => {
+      const x = p.x + DX[s] * STUB, y = p.y + DY[s] * STUB, c = at(x, y);
+      if (c >= 0) starts.push({ p, c, d: s, g: along(p.x, p.y, x, y) + p.off });
+    });
+    for (let s = 0; s < 4; s++) spots(o.dst, s, gaps[s]).forEach((tip) => {
+      const bx = tip.x + DX[s] * HEAD, by = tip.y + DY[s] * HEAD, gx = bx + DX[s] * (STUB + 2), gy = by + DY[s] * (STUB + 2), c = at(gx, gy);
+      // the head counts double: an arrowhead on top of writing is the worst place for it
+      if (c >= 0) goals.push({ tip, base: { x: bx, y: by }, c, d: (s + 2) % 4, extra: along(gx, gy, bx, by) + 2 * along(bx, by, tip.x, tip.y) + tip.off });
+    });
+    if (!starts.length || !goals.length) return null;
+    const goalAt = new Map();
+    goals.forEach((q, j) => { const k = q.c * 4 + q.d; if (!goalAt.has(k)) goalAt.set(k, []); goalAt.get(k).push(j); });
+    // steps still to go, at least: the distance to the box around all the finishing cells
+    const gxs = goals.map((q) => q.c % W), gys = goals.map((q) => (q.c - (q.c % W)) / W);
+    const gx0 = Math.min(...gxs), gx1 = Math.max(...gxs), gy0 = Math.min(...gys), gy1 = Math.max(...gys);
+    const est = (x, y) => Math.max(0, gx0 - x, x - gx1) + Math.max(0, gy0 - y, y - gy1);
+    // A* over (cell, heading); finishing at a goal is a last step of its own, so the cheapest finish wins
+    const S4 = N * 4, g = new Float32Array(S4).fill(Infinity), par = new Int32Array(S4).fill(-1), shut = new Uint8Array(S4);
+    const fin = new Float32Array(goals.length).fill(Infinity), finPar = new Int32Array(goals.length).fill(-1);
+    const hF = [], hS = [];
+    const push = (f, s) => {
+      let i = hF.length; hF.push(f); hS.push(s);
+      while (i > 0) { const q = (i - 1) >> 1; if (hF[q] <= f) break; hF[i] = hF[q]; hS[i] = hS[q]; i = q; }
+      hF[i] = f; hS[i] = s;
+    };
+    const pop = () => {
+      const top = hS[0], lf = hF.pop(), ls = hS.pop(), n = hF.length;
+      if (n) {
+        let i = 0;
+        for (;;) { let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && hF[c + 1] < hF[c]) c++; if (hF[c] >= lf) break; hF[i] = hF[c]; hS[i] = hS[c]; i = c; }
+        hF[i] = lf; hS[i] = ls;
+      }
+      return top;
+    };
+    starts.forEach((st, i) => {
+      const s = st.c * 4 + st.d;
+      if (st.g < g[s]) { g[s] = st.g; par[s] = -2 - i; push(st.g + est(st.c % W, (st.c - (st.c % W)) / W), s); }
+    });
+    let done = -1;
+    while (hF.length) {
+      const s = pop();
+      if (s >= S4) { done = s - S4; break; }
+      if (shut[s]) continue;
+      shut[s] = 1;
+      const c = s >> 2, d = s & 3, x = c % W, y = (c - x) / W;
+      const js = goalAt.get(s);
+      if (js) js.forEach((j) => { const f = g[s] + goals[j].extra; if (f < fin[j]) { fin[j] = f; finPar[j] = s; push(f, S4 + j); } });
+      for (let nd = 0; nd < 4; nd++) {
+        if (nd === (d + 2) % 4) continue;
+        const X = x + DX[nd], Y = y + DY[nd];
+        if (X < 0 || Y < 0 || X >= W || Y >= H) continue;
+        const nc = Y * W + X, ns = nc * 4 + nd, ng = g[s] + cost[nc] + (nd === d ? 0 : TURN);
+        if (ng < g[ns]) { g[ns] = ng; par[ns] = s; push(ng + est(X, Y), ns); }
+      }
+    }
+    if (done < 0) return null;
+    // walk back from the finish to the start
+    const path = [];
+    let s = finPar[done];
+    while (s >= 0) { path.unshift(s); s = par[s]; }
+    const st = starts[-2 - s], gl = goals[done];
+    // straight runs; each keeps one coordinate (x for an up/down run, y for a sideways one)
+    const runs = [];
+    path.forEach((q) => { const d = q & 3, c = q >> 2; if (!runs.length || runs[runs.length - 1].d !== d) runs.push({ d, c }); });
+    const fixed = runs.map((r) => (r.d % 2 === 0 ? (r.c % W) * CELL + CELL / 2 : Math.floor(r.c / W) * CELL + CELL / 2));
+    const vertical = (r) => r.d % 2 === 0;
+    // the first run leaves from the exact point on the source, the last arrives at the exact tip
+    fixed[runs.length - 1] = vertical(runs[runs.length - 1]) ? gl.base.x : gl.base.y;
+    if (runs.length > 1) fixed[0] = vertical(runs[0]) ? st.p.x : st.p.y;
+    const p0 = runs.length > 1 ? st.p : (vertical(runs[0]) ? { x: gl.base.x, y: st.p.y } : { x: st.p.x, y: gl.base.y });
+    const pts = [p0];
+    for (let k = 0; k + 1 < runs.length; k++) pts.push(vertical(runs[k]) ? { x: fixed[k], y: fixed[k + 1] } : { x: fixed[k + 1], y: fixed[k] });
+    pts.push(gl.base);
+    const P = pts.filter((q, k) => !k || Math.hypot(q.x - pts[k - 1].x, q.y - pts[k - 1].y) > 0.5).map((q) => ({ x: q.x, y: q.y + oy }));
+    const tip = { x: gl.tip.x, y: gl.tip.y + oy }, base = { x: gl.base.x, y: gl.base.y + oy };
+    // rounded corners: never more than half of either run they join
+    const f1 = (v) => v.toFixed(1), R = 8;
+    let dStr = 'M' + f1(P[0].x) + ' ' + f1(P[0].y);
+    for (let k = 1; k + 1 < P.length; k++) {
+      const a = P[k - 1], c = P[k], b = P[k + 1];
+      const li = Math.hypot(c.x - a.x, c.y - a.y), lo = Math.hypot(b.x - c.x, b.y - c.y);
+      const r = Math.min(R, li * (k === 1 ? 0.7 : 0.5), lo * (k + 2 === P.length ? 0.7 : 0.5));
+      const ix = (c.x - a.x) / li, iy = (c.y - a.y) / li, ox = (b.x - c.x) / lo, oy = (b.y - c.y) / lo;
+      dStr += 'L' + f1(c.x - ix * r) + ' ' + f1(c.y - iy * r) + 'Q' + f1(c.x) + ' ' + f1(c.y) + ' ' + f1(c.x + ox * r) + ' ' + f1(c.y + oy * r);
+    }
+    dStr += 'L' + f1(base.x) + ' ' + f1(base.y);
+    const vx = tip.x - base.x, vy = tip.y - base.y, vl = Math.hypot(vx, vy) || 1, px = -vy / vl, py = vx / vl;
+    let cross = 0;
+    path.forEach((q) => { const c = q >> 2; if (hard[c]) cross++; if (o.used) o.used[c + uo] = 1; });
+    return { d: dStr, head: [[base.x + px * HALF, base.y + py * HALF], [tip.x, tip.y], [base.x - px * HALF, base.y - py * HALF]], cross, turns: runs.length - 1, pts: P };
+  };
+
   /* ---------- moves: how much one tap writes ----------
      'symbol': one thing with one meaning: a number (½ and −3 included), a letter with its
      subscript and power (x₁, x²), a term (5x), a name like L₁(x) or f[x₁ x₂], an operator or "=";
@@ -613,15 +777,15 @@
     let shownBeat = -2;
     let cur = null; // the newest piece written: { unit, root, o: its note, chip }
     let card = null, cardKey = '', cardNew = false, lead = null;
-    // one highlight behind the newest piece, however many small parts (L, ₃, (x)) it is made of
+    // one thin line under the newest piece, however many small parts (L, ₃, (x)) it is made of
     const hl = h('span', { class: 'tut-hl', 'aria-hidden': 'true', hidden: true });
     let hlUnit = null;
     function placeHl(anim) {
       const rs = (hlUnit || []).filter((e) => e.isConnected && !e.classList.contains('tk-hide')).map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
       if (!rs.length || !hl.isConnected) { hl.hidden = true; return; }
       const sr = stage.getBoundingClientRect();
-      const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top)), r = Math.max(...rs.map((q) => q.right)), b = Math.max(...rs.map((q) => q.bottom));
-      Object.assign(hl.style, { left: (l - sr.left - 3).toFixed(1) + 'px', top: (t - sr.top - 1).toFixed(1) + 'px', width: (r - l + 6).toFixed(1) + 'px', height: (b - t + 2).toFixed(1) + 'px' });
+      const l = Math.min(...rs.map((r) => r.left)), r = Math.max(...rs.map((q) => q.right)), b = Math.max(...rs.map((q) => q.bottom));
+      Object.assign(hl.style, { left: (l - sr.left).toFixed(1) + 'px', top: (b - sr.top + 1).toFixed(1) + 'px', width: (r - l).toFixed(1) + 'px' });
       hl.classList.toggle('in', !!anim);
       hl.hidden = false;
     }
@@ -699,9 +863,13 @@
         const from = y(first, 'top'), bottom = y(last, 'bottom');
         // everything from the caption down if it fits; if not, the caption as far as the newest piece allows
         const want = bottom - from > room ? Math.max(from - gh - 8, y(newest, 'bottom') - room - gh) : Math.max(0, bottom - room - gh);
+        let smooth = false;
         if (b.kind === 'intro') screen.scrollTo({ top: 0 });
-        else if (Math.abs(screen.scrollTop - want) > 2) screen.scrollTo({ top: Math.max(want, 0), behavior: anim && !sameBeat && !reduced() ? 'smooth' : 'auto' });
-        marks(anim);
+        else if (Math.abs(screen.scrollTop - want) > 2) {
+          smooth = anim && !sameBeat && !reduced();
+          screen.scrollTo({ top: Math.max(want, 0), behavior: smooth ? 'smooth' : 'auto' });
+        }
+        marks(anim, smooth);
       });
     }
     // the card: the piece just written in a chip, then "From" and "Why"; otherwise a plain caption
@@ -726,8 +894,8 @@
 
     /* ---------- where it came from: rings on the sources, and an arrow to the new piece ---------- */
     const SVGNS = 'http://www.w3.org/2000/svg';
-    let srcs = [];
-    function marks(anim) {
+    let srcs = [], inkAt = -1, inkEnds = '', inkTimer = 0, inkPend = false, settleT = 0, inkRaf = 0;
+    function marks(anim, smooth) {
       placeHl(anim);
       screen.querySelectorAll('.w-src, .g-src').forEach((e) => e.classList.remove('w-src', 'g-src'));
       srcs = [];
@@ -741,14 +909,63 @@
           if (e) { e.classList.add('w-src'); srcs.push(e); }
         });
       }
-      drawInk(anim);
-      if (anim && srcs.length) setTimeout(reInk, 380); // after the new piece has settled
+      clearTimeout(settleT);
+      // while the board glides to the new line, wait: the arrow is drawn where it stops
+      if (smooth) { clearInk(); inkSoon(anim, 700); } else drawInk(anim);
+      // a caption or an answer that slides into place can move the ends a little: redraw if they moved
+      if (anim && srcs.length) settleT = setTimeout(() => { if (!inkTimer && endsKey() !== inkEnds) drawInk(false); }, 420);
+    }
+    const clearInk = () => { while (ink.firstChild) ink.removeChild(ink.firstChild); };
+    const inkSoon = (anim, ms) => {
+      inkPend = inkPend || anim;
+      clearTimeout(inkTimer);
+      inkTimer = setTimeout(() => { inkTimer = 0; const a = inkPend; inkPend = false; drawInk(a); }, ms);
+    };
+    // what the arrow points at: the new piece, but its number, not a bracket or comma written with it ("(0" → the 0)
+    const targetsNow = () => {
+      if (!card) return [];
+      const main = card.unit.toks ? card.unit.toks.filter((t) => !BRACKET.test(t.t)).map((t) => t.el) : [];
+      return (main.length ? main : card.unit).filter((e) => e.isConnected && !e.classList.contains('tk-hide'));
+    };
+    // where both ends are, and the board's size: when none of it changed, the drawing still fits
+    const endsKey = () => {
+      const vr = view.getBoundingClientRect();
+      return srcs.concat(targetsNow()).map((e) => { const r = e.getBoundingClientRect(); return [r.left - vr.left, r.top - vr.top, r.width, r.height].map(Math.round).join(','); }).join(';') +
+        '|' + Math.round(vr.width) + 'x' + Math.round(vr.height);
+    };
+    // all the writing on the board, as boxes in board px: text, the given cells, chips, answer boxes, fraction bars
+    function writing(vr, top, bottom, skip) {
+      const out = [], range = document.createRange();
+      const add = (r, pinned) => {
+        let t = r.top, b = r.bottom;
+        if (!pinned) { t = Math.max(t, top); b = Math.min(b, bottom); } // hidden under the given strip, or below the board
+        if (r.right > r.left && b > t) out.push({ l: r.left - vr.left, r: r.right - vr.left, t: t - vr.top, b: b - vr.top });
+      };
+      const mine = (e) => skip.some((s) => s === e || s.contains(e) || e.contains(s));
+      const walk = document.createTreeWalker(screen, 4 /* text */);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const pe = n.parentElement;
+        if (!/\S/.test(n.nodeValue) || !pe || skip.some((s) => s.contains(pe)) || pe.closest('.tk-hide')) continue;
+        range.selectNodeContents(n);
+        const pinned = given.contains(pe);
+        for (const r of range.getClientRects()) add(r, pinned);
+      }
+      // (not the boxes still waiting to be written: they are invisible)
+      screen.querySelectorAll('.tut-gcell, .tut-gt td, .tut-chip, .res:not(.tk-wait)').forEach((e) => { if (!mine(e) && !e.closest('.tk-hide')) add(e.getBoundingClientRect(), given.contains(e)); });
+      screen.querySelectorAll('.fr:not(.tk-wait) > span:first-child').forEach((e) => {
+        if (skip.some((s) => s.contains(e)) || e.closest('.tk-hide')) return;
+        const r = e.getBoundingClientRect();
+        add({ left: r.left, right: r.right, top: r.bottom - 2, bottom: r.bottom + 1 }, given.contains(e));
+      });
+      return out;
     }
     const colourOf = (e) => { const m = /\bpen-([abc])\b/.exec(e.className || ''); return m ? m[1] : penOf(e); };
     function drawInk(anim) {
-      while (ink.firstChild) ink.removeChild(ink.firstChild);
+      clearInk();
+      inkAt = screen.scrollTop;
+      inkEnds = endsKey();
       if (!srcs.length || !card || !view.isConnected) return;
-      const targets = card.unit.filter((e) => e.isConnected);
+      const targets = targetsNow();
       if (!targets.length) return;
       const box = (rs) => rs.reduce((a, r) => ({ left: Math.min(a.left, r.left), right: Math.max(a.right, r.right), top: Math.min(a.top, r.top), bottom: Math.max(a.bottom, r.bottom) }),
         { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
@@ -757,36 +974,50 @@
       // both ends must really be on screen: not scrolled away, not under the app's header or a sheet
       const seen = (r) => { const e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2); return !!e && screen.contains(e); };
       if (t.bottom < top || t.top > bottom || !seen(t)) return;
-      const tPen = penOf(targets[0]);
-      srcs.forEach((s) => {
+      const live = srcs.filter((s) => {
         const r = s.getBoundingClientRect(), mid = (r.top + r.bottom) / 2;
-        if (!given.contains(s) && (mid < top || mid > bottom)) return; // scrolled out of sight
-        if (!seen(r)) return;
-        if (r.bottom > t.top - 4 && r.top < t.bottom + 4) return; // on the same row: the ring says enough
-        const down = r.bottom <= t.top;
-        const x1 = (r.left + r.right) / 2 - vr.left, y1 = (down ? r.bottom + 3 : r.top - 3) - vr.top;
-        const x2 = (t.left + t.right) / 2 - vr.left, y2 = (down ? t.top - 5 : t.bottom + 5) - vr.top;
-        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
-        const bow = Math.min(46, len * 0.2) * (dx >= 0 ? 1 : -1); // a gentle hand-drawn curve
-        const cx = (x1 + x2) / 2 - (dy / len) * bow, cy = (y1 + y2) / 2 + (dx / len) * bow;
-        const ex = x2 - cx, ey = y2 - cy, el2 = Math.hypot(ex, ey) || 1, ux = ex / el2, uy = ey / el2, hl = 9, sp = 0.5;
-        const hx = (a) => x2 - hl * (ux * Math.cos(a) - uy * Math.sin(a)), hy = (a) => y2 - hl * (uy * Math.cos(a) + ux * Math.sin(a));
+        if (!given.contains(s) && (mid < top || mid > bottom)) return false; // scrolled out of sight
+        if (!seen(r)) return false;
+        return !(r.bottom > t.top - 4 && r.top < t.bottom + 4); // on the same row: the ring says enough
+      });
+      if (!live.length) return;
+      const rel = (r) => ({ l: r.left - vr.left, r: r.right - vr.left, t: r.top - vr.top, b: r.bottom - vr.top });
+      const blocks = writing(vr, top, bottom, srcs.concat(targets));
+      const strip = given.hidden ? [] : [rel(given.getBoundingClientRect())];
+      const used = new Uint8Array(Math.ceil(vr.width / 4) * Math.ceil(vr.height / 4));
+      const dst = rel(t), tPen = penOf(targets[0]);
+      live.forEach((s) => {
+        const others = srcs.filter((q) => q !== s).map((q) => rel(q.getBoundingClientRect()));
+        const way = UI.inkRoute({ w: vr.width, h: vr.height, src: rel(s.getBoundingClientRect()), dst, blocks: blocks.concat(others),
+          slow: given.contains(s) ? [] : strip, srcGap: 4.5, gap: [3, 3, 7, 3], used });
+        if (!way) return;
         const g = document.createElementNS(SVGNS, 'g');
         g.setAttribute('class', 'ink ' + (colourOf(s) || tPen || 'n') + (anim && !reduced() ? ' draw' : ''));
-        // each stroke sits on a dark outline, so it stays clean where it crosses writing
-        const path = (cls, d) => { const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('class', cls); p.setAttribute('d', d); return p; };
-        const dLine = 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'Q' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
-        const dHead = 'M' + hx(sp).toFixed(1) + ' ' + hy(sp).toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + 'L' + hx(-sp).toFixed(1) + ' ' + hy(-sp).toFixed(1);
-        const haloLine = path('halo ln', dLine), line = path('ln', dLine);
-        g.append(haloLine, path('halo hd', dHead), line, path('hd', dHead));
+        const line = document.createElementNS(SVGNS, 'path'), head = document.createElementNS(SVGNS, 'path');
+        line.setAttribute('class', 'ln');
+        line.setAttribute('d', way.d);
+        head.setAttribute('class', 'hd');
+        head.setAttribute('d', 'M' + way.head.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('L') + 'Z');
+        g.append(line, head);
         ink.appendChild(g);
         if (anim && line.getTotalLength) g.style.setProperty('--len', String(Math.ceil(line.getTotalLength())));
       });
     }
-    let inkRaf = 0;
-    const reInk = () => { if (!inkRaf) inkRaf = requestAnimationFrame(() => { inkRaf = 0; drawInk(false); }); };
-    screen.addEventListener('scroll', reInk, { passive: true });
-    if (root.ResizeObserver) { const ro = new root.ResizeObserver(() => { reInk(); placeThumb(); placeHl(false); }); ro.observe(view); ro.observe(track); }
+    // scrolling the board: the arrows go, and come back where everything stopped
+    screen.addEventListener('scroll', () => {
+      if (Math.abs(screen.scrollTop - inkAt) < 1) return;
+      inkAt = -1;
+      clearInk();
+      inkSoon(false, 140);
+    }, { passive: true });
+    if (root.ResizeObserver) {
+      const ro = new root.ResizeObserver(() => {
+        placeThumb(); placeHl(false);
+        cancelAnimationFrame(inkRaf);
+        inkRaf = requestAnimationFrame(() => { if (!inkTimer && endsKey() !== inkEnds) drawInk(false); });
+      });
+      ro.observe(view); ro.observe(track);
+    }
 
     /* ---------- controls ---------- */
     const asking = () => { const mv = model.moves[i]; return !!mv && model.beats[mv.b].kind === 'try' && mv.k === mv.n - 1; };
