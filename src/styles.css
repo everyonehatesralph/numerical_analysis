@@ -709,7 +709,9 @@ body.kp-open .tabbar { visibility: hidden; }
   position: relative; display: flex; flex-direction: column; height: clamp(560px, 82vh, 780px); margin: 4px 0 0; overflow: hidden;
   border-radius: 20px; background: var(--board); color: var(--ink-2); box-shadow: 0 0 0 1px rgba(0, 0, 0, .08);
   outline: none; scroll-margin-top: 72px; scroll-margin-bottom: calc(var(--tabbar-h) + 8px); -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
+.tut textarea, .tut input { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 .tut:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* the top bar: chapter (opens the list) and the tools */
@@ -836,8 +838,7 @@ body.kp-open .tabbar { visibility: hidden; }
 @keyframes tut-ink { to { stroke-dashoffset: 0; } }
 @keyframes tut-head { to { opacity: 1; } }
 /* what to remember: a row of chips under the given numbers; tap one for why */
-.tut-rem { order: 3; flex-basis: 100%; min-width: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin: 2px -14px 0; padding: 0 14px; overflow-x: auto; scrollbar-width: none; }
-.tut-rem::-webkit-scrollbar { display: none; }
+.tut-rem { order: 3; flex-basis: 100%; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
 .tut-rem-l { flex: none; font-size: .74rem; font-weight: 600; color: var(--muted); margin-right: 2px; }
 .tut-chip { flex: none; min-height: 32px; padding: 4px 10px; border: 0; border-radius: 999px; background: rgba(255, 216, 77, .12); color: var(--pen-a); font-size: .78rem; font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(255, 216, 77, .35); transition: background-color 150ms ease, transform 160ms var(--ease-out); }
