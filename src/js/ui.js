@@ -510,8 +510,9 @@
   UI.seg = (options, value, onChange) => {
     const el = h('div', { class: 'seg', role: 'group' });
     const btns = options.map(([v, label]) => {
-      const b = h('button', { type: 'button', class: String(v) === String(value) ? 'on' : '' }, label);
-      b.addEventListener('click', () => { btns.forEach((x) => x.classList.remove('on')); b.classList.add('on'); onChange(v); });
+      const on = String(v) === String(value);
+      const b = h('button', { type: 'button', class: on ? 'on' : '', 'aria-pressed': String(on) }, label);
+      b.addEventListener('click', () => { btns.forEach((x) => { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); }); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); onChange(v); });
       el.appendChild(b);
       return b;
     });

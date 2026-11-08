@@ -78,7 +78,10 @@
     full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     exit: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
     sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+    down: '<path d="M7 10l5 5 5-5"/>',
   };
+  const HINT = 'Tap the <b>right side</b> of the board for the next move, the <b>left side</b> to go back. Drag the bar to jump anywhere.';
   const svg = (name, fill) => '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" ' +
     (fill ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"') + '>' + ICON[name] + '</svg>';
 
@@ -182,8 +185,9 @@
     if (text === '=') {
       const next = units[k + 1] ? noteOf(units[k + 1], root) : {};
       if (next.pre) return { why: next.pre };
-      // "L₁(x) =": name what is about to be written
-      const prev = units[k - 1], pt = prev && prev.toks && (prev.toks.find((t) => !BRACKET.test(t.t)) || prev.toks[0]);
+      // "L₁(x) =": the first "=" of a line names what is about to be written
+      if (k !== 1) return { why: 'Equals: the same amount, worked out one more step.' };
+      const prev = units[0], pt = prev.toks && (prev.toks.find((t) => !BRACKET.test(t.t)) || prev.toks[0]);
       const name = pt ? (pt.w && root.contains(pt.w) ? cleanHTML(pt.w) : chipHTML(prev)) : '';
       return { why: name && UI.plain(name).length <= 18 ? 'Equals: next comes what ' + name + ' is.' : 'Equals: the right side is the same amount as the left side.' };
     }
@@ -214,10 +218,15 @@
     const count = (re) => toks.filter((t) => re.test(t.t)).length;
     if (toks.length > 1 && OPEN.test(toks[0].t) && count(OPEN) > count(CLOSE)) toks = toks.slice(1);
     if (toks.length > 1 && CLOSE.test(toks[toks.length - 1].t) && count(CLOSE) > count(OPEN)) toks = toks.slice(0, -1);
+    // an absolute-value bar that only opens or closes ("max |") is left off too
+    if (toks.length > 1 && count(/^\|$/) % 2 === 1) toks = toks[toks.length - 1].t === '|' ? toks.slice(0, -1) : toks[0].t === '|' ? toks.slice(1) : toks;
     let out = '';
     for (let k = 0; k < toks.length; k++) {
       const t = toks[k], esc = t.t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-      if (t.fr && toks[k + 1] && toks[k + 1].fr === t.fr) { out += M.fr(esc, toks[k + 1].t); k++; continue; }
+      if (k > 0 && t.gap) out += ' '; // "error wanted at", f[x₁ x₂]: keep the spaces between words
+      // a top and a bottom of the same fraction (not x and ₁, which both sit on the bottom)
+      const nx = toks[k + 1], halves = t.fr && t.fr.children.length === 2 ? t.fr.children : null;
+      if (halves && nx && nx.fr === t.fr && halves[0].contains(t.el) && halves[1].contains(nx.el)) { out += M.fr(esc, nx.t.replace(/&/g, '&amp;').replace(/</g, '&lt;')); k++; continue; }
       out += t.sub ? '<sub>' + esc + '</sub>' : t.sup ? '<sup>' + esc + '</sup>' : t.it ? '<i>' + esc + '</i>' : esc;
     }
     return out;
@@ -267,44 +276,86 @@
     let i = -1; // a move index; −1 is the cover
     let spokenHTML = ''; // what the newest move wrote, for the voice
 
+    /* The player, top to bottom: a bar with the chapter (tap it for the list) and the tools; the
+       board (the given strip and the lines being written; tap its right side to go on, its left
+       side to go back); a sheet with the note on the newest piece, the progress bar (drag its
+       handle to jump) and the buttons. On a phone the lesson plays full screen. */
     const el = h('div', { class: 'tut', tabindex: '-1', role: 'region', 'aria-label': 'Step-by-step tutorial' });
     const given = h('div', { class: 'tut-given' });
     const stage = h('div', { class: 'tut-stage' });
-    const cc = h('div', { class: 'tut-cc', 'aria-live': 'polite' });
-    // settings open as a sheet over the video, like a video player's own settings
-    const panel = h('div', { class: 'tut-settings', hidden: true, role: 'group', 'aria-label': 'Tutorial settings' });
-    const screen = h('div', { class: 'tut-screen' }, given, stage, cc, panel);
-    // arrows from where a number came from to where it is being written, drawn over the screen
+    const screen = h('div', { class: 'tut-screen' }, given, stage);
+    // arrows from where a number came from to where it is being written, drawn over the board
     const ink = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     ink.setAttribute('class', 'tut-ink');
     ink.setAttribute('aria-hidden', 'true');
-    const view = h('div', { class: 'tut-view' }, screen, ink);
-    const bar = h('div', { class: 'tut-bar' });
-    const time = h('span', { class: 'tut-time' });
-    const where = h('span', { class: 'tut-chname' });
-    const tool = (name, label, onclick) => h('button', { class: 'tut-ico', type: 'button', title: label, 'aria-label': label, html: svg(name), onclick });
-    const ccBtn = tool('cc', 'Captions', () => { prefs.cc = !prefs.cc; save(); go(i, false); });
+    // the side of the board you tapped lights up for a moment
+    const edgeL = h('span', { class: 'tut-edge l', 'aria-hidden': 'true', html: svg('back') });
+    const edgeR = h('span', { class: 'tut-edge r', 'aria-hidden': 'true', html: svg('next') });
+    const view = h('div', { class: 'tut-view' }, screen, ink, edgeL, edgeR);
+    const tool = (name, label, onclick, cls) => h('button', { class: 'tut-ico' + (cls ? ' ' + cls : ''), type: 'button', title: label, 'aria-label': label, html: svg(name), onclick });
+    const closeBtn = tool('close', 'Close full screen', () => setFull(false), 'tut-close');
+    const chNum = h('span', { class: 'tut-chn' }), chName = h('span', { class: 'tut-chname' });
+    const chBtn = h('button', { class: 'tut-chbtn', type: 'button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', onclick: () => sheet(sheetKind === 'chapters' ? '' : 'chapters') },
+      chNum, chName, h('span', { class: 'tut-caret', html: svg('down') }));
     const voiceBtn = synth ? tool('mute', 'Read aloud', () => { prefs.voice = !prefs.voice; save(); if (!prefs.voice) synth.cancel(); else speak(); tools(); }) : null;
-    const showPanel = (on) => { panel.hidden = !on; if (on) drawPanel(); cc.hidden = on || !prefs.cc || !cc.innerHTML; tools(); };
-    const setBtn = tool('sliders', 'Settings', () => showPanel(panel.hidden));
-    const fullBtn = tool('full', 'Full screen', () => setFull(!el.classList.contains('full')));
-    const back = h('button', { class: 'btn tut-back', type: 'button', 'aria-label': 'Back one move', html: svg('back') });
-    const next = h('button', { class: 'btn primary tut-next', type: 'button' });
+    const setBtn = tool('sliders', 'Settings', () => sheet(sheetKind === 'settings' ? '' : 'settings'));
+    setBtn.setAttribute('aria-haspopup', 'dialog');
+    const fullBtn = tool('full', 'Full screen', () => setFull(true), 'tut-fullbtn');
+    const top = h('div', { class: 'tut-top' }, closeBtn, chBtn, h('div', { class: 'tut-tools' }, voiceBtn, setBtn, fullBtn));
+    const cc = h('div', { class: 'tut-cc', 'aria-live': 'polite' });
+    const track = h('div', { class: 'tut-track' });
+    const thumb = h('span', { class: 'tut-thumb', 'aria-hidden': 'true' });
+    const tip = h('span', { class: 'tut-tip', 'aria-hidden': 'true' });
+    const bar = h('div', { class: 'tut-bar', role: 'slider', tabindex: '0', 'aria-label': 'Lesson progress', 'aria-valuemin': '0' }, track);
+    const time = h('span', { class: 'tut-time', 'aria-hidden': 'true' });
+    const back = h('button', { class: 'btn tut-back', type: 'button', title: 'Back one move', 'aria-label': 'Back one move', html: svg('back') });
+    const next = h('button', { class: 'btn tut-next', type: 'button' });
     const play = h('button', { class: 'btn tut-play', type: 'button' });
-    el.append(view, bar,
-      h('div', { class: 'tut-meta' }, h('div', { class: 'tut-where' }, time, where), h('div', { class: 'tut-tools' }, ccBtn, voiceBtn, setBtn, fullBtn)),
-      h('div', { class: 'tut-ctrl' }, back, next, play));
+    const dock = h('div', { class: 'tut-dock' }, cc, h('div', { class: 'tut-prog' }, bar, time), h('div', { class: 'tut-ctrl' }, back, next, play));
+    // settings and the chapter list open as a sheet over the player; a tap outside closes it
+    const scrim = h('div', { class: 'tut-scrim', hidden: true, onclick: () => sheet('') });
+    const panel = h('div', { class: 'tut-sheet', hidden: true, role: 'dialog', tabindex: '-1' });
+    el.append(top, view, dock, scrim, panel);
     parent.appendChild(el);
 
-    /* ---------- settings: how much each tap writes, play speed, "your turn" ---------- */
-    function drawPanel() {
+    /* ---------- the sheet: settings, or the list of chapters ---------- */
+    let sheetKind = '', sheetFrom = null;
+    function sheet(kind) {
+      const was = sheetKind;
+      sheetKind = kind || '';
       panel.innerHTML = '';
-      const row = (label, seg) => h('div', { class: 'tut-set' }, h('span', { class: 'tut-set-l', text: label }), seg);
-      panel.append(
+      panel.hidden = scrim.hidden = !sheetKind;
+      if (sheetKind === 'settings') drawSettings();
+      else if (sheetKind === 'chapters') drawChapters();
+      tools();
+      if (sheetKind) {
+        if (!was) sheetFrom = document.activeElement;
+        const f = panel.querySelector('[aria-current]') || panel;
+        f.focus({ preventScroll: true });
+      } else if (was && sheetFrom && sheetFrom.isConnected) { sheetFrom.focus({ preventScroll: true }); sheetFrom = null; }
+    }
+    const sheetHead = (title) => h('div', { class: 'tut-sheet-h' }, h('h4', { text: title }),
+      h('button', { class: 'tut-ico', type: 'button', title: 'Close', 'aria-label': 'Close ' + title.toLowerCase(), html: svg('close'), onclick: () => sheet('') }));
+    function drawSettings() {
+      panel.setAttribute('aria-label', 'Settings');
+      const row = (label, seg) => { seg.setAttribute('aria-label', label); return h('div', { class: 'tut-set' }, h('span', { class: 'tut-set-l', 'aria-hidden': 'true', text: label }), seg); };
+      panel.append(sheetHead('Settings'),
         row('Each tap writes', UI.seg([['symbol', 'One symbol'], ['part', 'One part'], ['line', 'One line']], prefs.size, (v) => { prefs.size = v; save(); rebuild(); })),
         row('Play speed', UI.seg([['0.5', '0.5×'], ['1', '1×'], ['1.5', '1.5×'], ['2', '2×']], String(prefs.speed), (v) => { prefs.speed = Number(v); save(); if (playing) schedule(); })),
         row('Your turn', UI.seg([['on', 'Stop before answers'], ['off', 'Don\'t stop']], prefs.tryFirst ? 'on' : 'off', (v) => { prefs.tryFirst = v === 'on'; save(); rebuild(); })),
-        h('button', { class: 'btn sm tut-set-done', type: 'button', onclick: () => showPanel(false) }, 'Done'));
+        row('From / Why notes', UI.seg([['on', 'Show'], ['off', 'Hide']], prefs.cc ? 'on' : 'off', (v) => { prefs.cc = v === 'on'; save(); go(i, false); })));
+    }
+    // every chapter, with the one you are on marked; used on the cover and in the sheet
+    function chapterList(pick) {
+      const now = chapterOf(i);
+      return h('ol', { class: 'tut-chapters' }, model.chapters.map((ch, k) => h('li', null,
+        h('button', { type: 'button', class: k === now ? 'on' : k < now ? 'done' : null, 'aria-current': k === now ? 'step' : null, onclick: () => pick(ch) },
+          h('span', { class: 'n', 'aria-hidden': 'true', text: String(k + 1) }), h('span', { class: 't', html: ch.title }),
+          k < now ? h('span', { class: 'visually-hidden', text: ', done' }) : null))));
+    }
+    function drawChapters() {
+      panel.setAttribute('aria-label', 'Chapters');
+      panel.append(sheetHead('Chapters'), chapterList((ch) => { sheet(''); jump(ch.m0); }));
     }
     function rebuild() {
       const bi = i < 0 ? -1 : model.moves[i].b, nBeats = model.beats.length;
@@ -316,20 +367,97 @@
       go(bi < 0 ? -1 : model.beats.length === nBeats ? model.first[bi] : model.chapters[c].m0, false);
     }
 
-    /* ---------- chapter bar, like video chapters ---------- */
+    /* ---------- the progress bar: a segment per chapter, and a handle you can drag ---------- */
+    let segs = [];
+    const chapterOf = (m) => (m < 0 || !model.moves[m] ? -1 : model.beats[model.moves[m].b].c);
     function drawBar() {
-      bar.innerHTML = '';
-      model.chapters.forEach((ch, k) => {
-        const seg = h('button', { type: 'button', class: 'tut-seg', style: { flexGrow: String(Math.max(1, Math.sqrt(ch.m1 - ch.m0))) }, title: UI.plain(ch.title), 'aria-label': 'Chapter ' + (k + 1) + ': ' + UI.plain(ch.title) }, h('span', { class: 'tut-fill' }));
-        seg.addEventListener('click', () => { stopPlay(); go(ch.m0, true); });
-        bar.appendChild(seg);
-      });
+      segs = model.chapters.map((ch) => h('span', { class: 'tut-seg', style: { flexGrow: String(Math.max(1, Math.sqrt(ch.m1 - ch.m0))) } }, h('span', { class: 'tut-fill' })));
+      track.innerHTML = '';
+      track.append(...segs, thumb, tip);
+      bar.setAttribute('aria-valuemax', String(model.moves.length));
     }
-    const paintBar = () => model.chapters.forEach((ch, k) => {
-      const seg = bar.children[k];
-      const done = i < ch.m0 ? 0 : i >= ch.m1 - 1 ? 1 : (i - ch.m0 + 1) / (ch.m1 - ch.m0);
-      seg.firstChild.style.transform = 'scaleX(' + done + ')';
-      seg.classList.toggle('on', i >= ch.m0 && i < ch.m1);
+    // where move m ends on the bar, as a share of its width (the cover, −1, is the very start)
+    function posOf(m) {
+      const W = track.clientWidth, k = chapterOf(m);
+      if (!W || k < 0 || !segs[k]) return 0;
+      const ch = model.chapters[k], s = segs[k];
+      return (s.offsetLeft + s.offsetWidth * (m - ch.m0 + 1) / (ch.m1 - ch.m0)) / W;
+    }
+    // the move under the finger at screen position x
+    function moveAt(x) {
+      let k = 0;
+      while (k < segs.length - 1 && x > segs[k].getBoundingClientRect().right + 1.5) k++;
+      const r = segs[k].getBoundingClientRect(), ch = model.chapters[k];
+      const f = Math.max(0, Math.min(1, (x - r.left) / (r.width || 1)));
+      return Math.min(ch.m1 - 1, ch.m0 + Math.max(0, Math.ceil(f * (ch.m1 - ch.m0)) - 1));
+    }
+    const placeThumb = () => { if (!drag) thumb.style.left = (posOf(i) * 100).toFixed(3) + '%'; };
+    function paintBar() {
+      model.chapters.forEach((ch, k) => {
+        const s = segs[k];
+        if (!s) return;
+        const done = i < ch.m0 ? 0 : i >= ch.m1 - 1 ? 1 : (i - ch.m0 + 1) / (ch.m1 - ch.m0);
+        s.firstChild.style.transform = 'scaleX(' + done + ')';
+        s.classList.toggle('on', i >= ch.m0 && i < ch.m1);
+      });
+      placeThumb();
+      const c = chapterOf(i);
+      bar.setAttribute('aria-valuenow', String(i + 1));
+      bar.setAttribute('aria-valuetext', c < 0 ? 'Not started, ' + model.moves.length + ' moves'
+        : 'Move ' + (i + 1) + ' of ' + model.moves.length + ', chapter ' + (c + 1) + ': ' + UI.plain(model.chapters[c].title));
+    }
+    // dragging: the handle follows the finger, a label shows the chapter, and the board follows
+    let drag = null, dragRaf = 0;
+    function dragTo(x) {
+      const tr = track.getBoundingClientRect(), W = tr.width || 1, px = Math.max(0, Math.min(W, x - tr.left));
+      const m = moveAt(x), c = chapterOf(m);
+      drag.m = m;
+      thumb.style.left = (px / W * 100).toFixed(3) + '%';
+      tip.innerHTML = '';
+      tip.append(h('span', { class: 'tut-tip-t', html: (c + 1) + '. ' + model.chapters[c].title }), h('span', { class: 'tut-tip-n', text: (m + 1) + ' / ' + model.moves.length }));
+      const tw = tip.offsetWidth;
+      tip.style.left = Math.max(tw / 2, Math.min(W - tw / 2, px)).toFixed(1) + 'px';
+      if (m !== i && !dragRaf) dragRaf = requestAnimationFrame(() => { dragRaf = 0; if (drag && drag.m !== i) { i = drag.m; render(false); controls(); } });
+    }
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || !model.moves.length) return;
+      e.preventDefault();
+      try { bar.setPointerCapture(e.pointerId); } catch (err) { /* the drag still works without capture */ }
+      stopPlay();
+      active = api;
+      if (synth) synth.cancel();
+      drag = { id: e.pointerId, m: i };
+      bar.classList.add('drag');
+      dragTo(e.clientX);
+    });
+    bar.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) dragTo(e.clientX); });
+    const dragEnd = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const m = drag.m;
+      drag = null;
+      cancelAnimationFrame(dragRaf);
+      dragRaf = 0;
+      bar.classList.remove('drag');
+      go(m, false);
+    };
+    bar.addEventListener('pointerup', dragEnd);
+    bar.addEventListener('pointercancel', dragEnd);
+    // keys on the bar: arrows one move, Page Up / Page Down a chapter, Home / End
+    bar.addEventListener('keydown', (e) => {
+      const c = chapterOf(i), n = model.chapters.length;
+      let m = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') m = i + 1;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') m = i - 1;
+      else if (e.key === 'PageDown') m = c + 1 < n ? model.chapters[c + 1].m0 : model.moves.length - 1;
+      else if (e.key === 'PageUp') m = c < 0 ? -1 : i > model.chapters[c].m0 ? model.chapters[c].m0 : c > 0 ? model.chapters[c - 1].m0 : -1;
+      else if (e.key === 'Home') m = 0;
+      else if (e.key === 'End') m = model.moves.length - 1;
+      if (m === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stopPlay();
+      active = api;
+      go(m, false);
     });
 
     /* ---------- the screen ---------- */
@@ -382,6 +510,7 @@
         P.node.classList.add('write');
       }
       markNewest(newest, anim && prefs.size !== 'line');
+      if (prefs.size === 'symbol') hlUnit = newest || null;
       return P.node;
     }
     function tableAt(s, shown, anim) {
@@ -396,27 +525,38 @@
       spokenHTML = P.units[shown - 1] && prefs.size === 'symbol' ? P.units[shown - 1].map((e) => e.innerHTML).join(' ') : '';
       return P.node;
     }
+    // before the start: the chapters (tap one to start there), and how to move, in the note area
     function cover() {
       el.classList.add('cover');
       drawGiven(null);
       const per = prefs.size === 'symbol' ? 'one symbol' : prefs.size === 'part' ? 'one part' : 'one line';
       stage.appendChild(h('div', { class: 'tut-cover' },
-        h('button', { class: 'tut-big', type: 'button', 'aria-label': 'Start the tutorial', html: svg('play', true), onclick: () => start() }),
+        h('h3', { text: 'Solved one move at a time' }),
         h('p', { class: 'tut-cover-t', text: model.chapters.length + ' chapters · ' + model.moves.length + ' moves · ' + per + ' per tap' }),
-        h('ol', { class: 'tut-chapters' }, model.chapters.map((ch, k) => h('li', null,
-          h('button', { type: 'button', onclick: () => { stopPlay(); go(ch.m0, true); scrollIntoView(); } }, h('span', { class: 'n', text: String(k + 1) }), h('span', { html: ch.title })))))));
-      cc.hidden = true;
+        chapterList((ch) => jump(ch.m0))));
     }
     let shownBeat = -2;
     let cur = null; // the newest piece written: { unit, root, o: its note, chip }
     let card = null, cardKey = '', cardNew = false, lead = null;
+    // one highlight behind the newest piece, however many small parts (L, ₃, (x)) it is made of
+    const hl = h('span', { class: 'tut-hl', 'aria-hidden': 'true', hidden: true });
+    let hlUnit = null;
+    function placeHl(anim) {
+      const rs = (hlUnit || []).filter((e) => e.isConnected && !e.classList.contains('tk-hide')).map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+      if (!rs.length || !hl.isConnected) { hl.hidden = true; return; }
+      const sr = stage.getBoundingClientRect();
+      const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top)), r = Math.max(...rs.map((q) => q.right)), b = Math.max(...rs.map((q) => q.bottom));
+      Object.assign(hl.style, { left: (l - sr.left - 3).toFixed(1) + 'px', top: (t - sr.top - 1).toFixed(1) + 'px', width: (r - l + 6).toFixed(1) + 'px', height: (b - t + 2).toFixed(1) + 'px' });
+      hl.classList.toggle('in', !!anim);
+      hl.hidden = false;
+    }
     function render(anim) {
       const keep = screen.scrollTop;
       stage.innerHTML = '';
       el.classList.remove('cover');
       spokenHTML = '';
-      cur = null; card = null; lead = null;
-      if (i < 0) { shownBeat = -2; cardKey = ''; cover(); return marks(false); }
+      cur = null; card = null; lead = null; hlUnit = null;
+      if (i < 0) { shownBeat = -2; cardKey = ''; cover(); drawCard(HINT); return marks(false); }
       const mv = model.moves[i], bi = mv.b, b = model.beats[bi], ch = model.chapters[b.c];
       const writing = b.kind === 'line' || b.kind === 'try' || b.kind === 'table';
       let say = b.say;
@@ -424,7 +564,7 @@
         drawGiven(null);
         stage.appendChild(h('div', { class: 'tut-answer' + (anim ? ' enter' : '') }, h('div', { class: 'tut-kicker', text: 'Answer' }),
           sol.answer.map((l) => h('div', { class: 'ln', html: UI.lineHTML(l) })),
-          h('p', { class: 'tut-done', text: 'Done. Tap a chapter on the bar below to watch any part again.' })));
+          h('p', { class: 'tut-done', text: 'Done. Drag the bar or open the chapter list at the top to watch any part again.' })));
       } else {
         const s = steps[b.c], t = s.tut || {};
         drawGiven(focusAt(bi), t.noGiven);
@@ -456,6 +596,7 @@
           }
           stage.appendChild(node);
         }
+        if (hlUnit) stage.insertBefore(hl, stage.firstChild);
         // the card at the bottom explains the piece just written: where it came from, and why
         if (writing) {
           if (asking()) say = TRY;
@@ -474,10 +615,14 @@
       const last = stage.lastElementChild, first = lead || last;
       requestAnimationFrame(() => {
         if (!last) return marks(anim);
-        const gh = given.hidden ? 0 : given.offsetHeight, ch2 = cc.hidden ? 0 : cc.offsetHeight;
-        const room = screen.clientHeight - gh - ch2 - 24;
-        const bottom = last.offsetTop + last.offsetHeight, span = bottom - first.offsetTop;
-        const want = span > room ? first.offsetTop - gh - 8 : Math.max(0, bottom - room - gh);
+        const gh = given.hidden ? 0 : given.offsetHeight;
+        const room = screen.clientHeight - gh - 24;
+        // positions from the top of the board's scroll area
+        const origin = screen.getBoundingClientRect().top - screen.scrollTop, y = (e, edge) => e.getBoundingClientRect()[edge] - origin;
+        const newest = stage.querySelector('.tut-table .tk-now') || last;
+        const from = y(first, 'top'), bottom = y(last, 'bottom');
+        // everything from the caption down if it fits; if not, the caption as far as the newest piece allows
+        const want = bottom - from > room ? Math.max(from - gh - 8, y(newest, 'bottom') - room - gh) : Math.max(0, bottom - room - gh);
         if (b.kind === 'intro') screen.scrollTo({ top: 0 });
         else if (Math.abs(screen.scrollTop - want) > 2) screen.scrollTo({ top: Math.max(want, 0), behavior: anim && !sameBeat && !reduced() ? 'smooth' : 'auto' });
         marks(anim);
@@ -487,7 +632,7 @@
     const bare = (html) => String(html || '').replace(/ data-(?:id|src|g|from|why|pre)="[^"]*"/g, '');
     function drawCard(say) {
       cc.innerHTML = '';
-      cc.classList.toggle('why', !!card);
+      cc.className = 'tut-cc' + (card ? ' why' + (cardNew ? ' fresh' : '') : '');
       if (card) {
         const main = card.unit.toks ? (card.unit.toks.find((t) => !BRACKET.test(t.t)) || card.unit.toks[0]).el : card.unit[0];
         const pen = penOf(main) || (main.closest && main.closest('.res') ? 'a' : '');
@@ -496,15 +641,18 @@
         cc.append(
           chip ? h('span', { class: 'tut-sym' + (pen ? ' ' + pen : '') }, h('span', { html: chip })) : null,
           h('div', { class: 'tut-why' }, row('From', card.o.from), row('Why', card.o.why)));
-        if (cardNew) cc.classList.add('fresh'); else cc.classList.remove('fresh');
-      } else cc.innerHTML = say || '';
-      cc.hidden = !prefs.cc || (!card && !say) || !panel.hidden;
+      } else if (asking()) {
+        cc.classList.add('ask');
+        cc.append(h('p', { class: 'tut-try' }, h('b', { text: 'Your turn' }), h('span', { html: 'Work out the <b>?</b> on paper, then tap <b>Check</b>.' })));
+      } else if (say) cc.append(h('p', { class: 'tut-cap', html: say }));
+      cc.hidden = !prefs.cc;
     }
 
     /* ---------- where it came from: rings on the sources, and an arrow to the new piece ---------- */
     const SVGNS = 'http://www.w3.org/2000/svg';
     let srcs = [];
     function marks(anim) {
+      placeHl(anim);
       screen.querySelectorAll('.w-src, .g-src').forEach((e) => e.classList.remove('w-src', 'g-src'));
       srcs = [];
       if (card && prefs.cc && !cc.hidden) {
@@ -529,12 +677,15 @@
       const box = (rs) => rs.reduce((a, r) => ({ left: Math.min(a.left, r.left), right: Math.max(a.right, r.right), top: Math.min(a.top, r.top), bottom: Math.max(a.bottom, r.bottom) }),
         { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
       const t = box(targets.map((e) => e.getBoundingClientRect())), vr = view.getBoundingClientRect(), sr = screen.getBoundingClientRect();
-      const top = given.hidden ? sr.top : given.getBoundingClientRect().bottom, bottom = cc.hidden ? sr.bottom : cc.getBoundingClientRect().top;
-      if (t.bottom < top || t.top > bottom) return;
+      const top = given.hidden ? sr.top : given.getBoundingClientRect().bottom, bottom = sr.bottom;
+      // both ends must really be on screen: not scrolled away, not under the app's header or a sheet
+      const seen = (r) => { const e = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2); return !!e && screen.contains(e); };
+      if (t.bottom < top || t.top > bottom || !seen(t)) return;
       const tPen = penOf(targets[0]);
       srcs.forEach((s) => {
-        const r = s.getBoundingClientRect();
-        if (!given.contains(s) && (r.bottom < top || r.top > bottom)) return; // scrolled out of sight
+        const r = s.getBoundingClientRect(), mid = (r.top + r.bottom) / 2;
+        if (!given.contains(s) && (mid < top || mid > bottom)) return; // scrolled out of sight
+        if (!seen(r)) return;
         if (r.bottom > t.top - 4 && r.top < t.bottom + 4) return; // on the same row: the ring says enough
         const down = r.bottom <= t.top;
         const x1 = (r.left + r.right) / 2 - vr.left, y1 = (down ? r.bottom + 3 : r.top - 3) - vr.top;
@@ -546,42 +697,43 @@
         const hx = (a) => x2 - hl * (ux * Math.cos(a) - uy * Math.sin(a)), hy = (a) => y2 - hl * (uy * Math.cos(a) + ux * Math.sin(a));
         const g = document.createElementNS(SVGNS, 'g');
         g.setAttribute('class', 'ink ' + (colourOf(s) || tPen || 'n') + (anim && !reduced() ? ' draw' : ''));
-        const line = document.createElementNS(SVGNS, 'path');
-        line.setAttribute('d', 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'Q' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1));
-        const head = document.createElementNS(SVGNS, 'path');
-        head.setAttribute('d', 'M' + hx(sp).toFixed(1) + ' ' + hy(sp).toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + 'L' + hx(-sp).toFixed(1) + ' ' + hy(-sp).toFixed(1));
-        g.append(line, head);
+        // each stroke sits on a dark outline, so it stays clean where it crosses writing
+        const path = (cls, d) => { const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('class', cls); p.setAttribute('d', d); return p; };
+        const dLine = 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + 'Q' + cx.toFixed(1) + ' ' + cy.toFixed(1) + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
+        const dHead = 'M' + hx(sp).toFixed(1) + ' ' + hy(sp).toFixed(1) + 'L' + x2.toFixed(1) + ' ' + y2.toFixed(1) + 'L' + hx(-sp).toFixed(1) + ' ' + hy(-sp).toFixed(1);
+        const haloLine = path('halo ln', dLine), line = path('ln', dLine);
+        g.append(haloLine, path('halo hd', dHead), line, path('hd', dHead));
         ink.appendChild(g);
-        if (anim && line.getTotalLength) line.style.setProperty('--len', String(Math.ceil(line.getTotalLength())));
+        if (anim && line.getTotalLength) g.style.setProperty('--len', String(Math.ceil(line.getTotalLength())));
       });
     }
     let inkRaf = 0;
     const reInk = () => { if (!inkRaf) inkRaf = requestAnimationFrame(() => { inkRaf = 0; drawInk(false); }); };
     screen.addEventListener('scroll', reInk, { passive: true });
-    if (root.ResizeObserver) new root.ResizeObserver(reInk).observe(view);
+    if (root.ResizeObserver) { const ro = new root.ResizeObserver(() => { reInk(); placeThumb(); placeHl(false); }); ro.observe(view); ro.observe(track); }
 
     /* ---------- controls ---------- */
     const asking = () => { const mv = model.moves[i]; return !!mv && model.beats[mv.b].kind === 'try' && mv.k === mv.n - 1; };
     function tools() {
-      ccBtn.setAttribute('aria-pressed', String(prefs.cc));
       if (voiceBtn) { voiceBtn.setAttribute('aria-pressed', String(prefs.voice)); voiceBtn.innerHTML = svg(prefs.voice ? 'voice' : 'mute'); }
-      setBtn.setAttribute('aria-pressed', String(!panel.hidden));
-      const full = el.classList.contains('full');
-      fullBtn.setAttribute('aria-pressed', String(full));
-      fullBtn.innerHTML = svg(full ? 'exit' : 'full');
-      fullBtn.setAttribute('aria-label', full ? 'Exit full screen' : 'Full screen');
+      setBtn.setAttribute('aria-expanded', String(sheetKind === 'settings'));
+      chBtn.setAttribute('aria-expanded', String(sheetKind === 'chapters'));
     }
     function controls() {
-      const last = model.moves.length - 1;
+      const last = model.moves.length - 1, ask = asking(), c = chapterOf(i), n = model.chapters.length;
       back.disabled = i < 0;
-      const label = i < 0 ? 'Start' : i === last ? 'Watch again' : asking() ? 'Check' : 'Next';
+      const label = i < 0 ? 'Start' : i === last ? 'Watch again' : ask ? 'Check' : 'Next';
       next.innerHTML = '<span>' + label + '</span>' + svg(i === last ? 'again' : 'next');
-      next.setAttribute('aria-label', label === 'Next' ? 'Next move' : label);
+      next.setAttribute('aria-label', label === 'Next' ? 'Next move' : label === 'Check' ? 'Check: show the answer' : label);
+      next.classList.toggle('ask', ask);
       play.innerHTML = svg(playing ? 'pause' : 'play', true);
       play.setAttribute('aria-label', playing ? 'Pause' : 'Play by itself');
+      play.title = playing ? 'Pause' : 'Play by itself';
       play.disabled = i === last;
-      time.textContent = i < 0 ? model.moves.length + ' moves' : (i + 1) + ' / ' + model.moves.length;
-      where.innerHTML = i < 0 ? 'Tap Start' : model.chapters[model.beats[model.moves[i].b].c].title;
+      time.textContent = Math.max(0, i + 1) + ' / ' + model.moves.length;
+      chNum.textContent = c < 0 ? '' : (c + 1) + '/' + n;
+      chName.innerHTML = c < 0 ? n + ' chapters' : model.chapters[c].title;
+      chBtn.setAttribute('aria-label', 'Chapters, ' + (c < 0 ? 'not started' : 'now on chapter ' + (c + 1) + ' of ' + n + ': ' + UI.plain(model.chapters[c].title)));
       paintBar();
       tools();
     }
@@ -598,20 +750,43 @@
       const r = el.getBoundingClientRect();
       if (r.top < 0 || r.bottom > root.innerHeight) el.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
     };
-    const start = () => { go(0, true); scrollIntoView(); };
+    // on a phone the lesson plays full screen, so the board and the buttons stay put under your thumb
+    const phone = () => !!(root.matchMedia && root.matchMedia('(max-width: 600px)').matches);
+    const begin = () => { if (phone() && !el.classList.contains('full')) setFull(true); };
+    const start = () => { begin(); go(0, true); scrollIntoView(); };
     const forward = () => {
       active = api;
       if (i < 0 || i === model.moves.length - 1) return start();
+      begin();
       go(i + 1, true);
     };
+    const jump = (m) => { stopPlay(); active = api; begin(); go(m, true); scrollIntoView(); };
     next.addEventListener('click', () => { stopPlay(); forward(); });
     back.addEventListener('click', () => { stopPlay(); active = api; go(i - 1, false); });
     play.addEventListener('click', () => {
       active = api;
       if (playing) return stopPlay();
       playing = true;
-      if (i < 0 || asking()) forward(); else schedule();
+      if (i < 0 || asking()) forward(); else { begin(); schedule(); }
       controls();
+    });
+    // the board itself: a tap on its right side goes on, on its left side goes back
+    const edge = (e) => { if (reduced()) return; e.classList.remove('on'); void e.offsetWidth; e.classList.add('on'); };
+    view.addEventListener('click', (e) => {
+      if (e.target.closest && e.target.closest('button, a, input, select, textarea, summary, label')) return;
+      const r = view.getBoundingClientRect();
+      if (e.clientX - r.left < r.width * 0.35) {
+        if (i < 0) return;
+        stopPlay();
+        active = api;
+        edge(edgeL);
+        go(i - 1, false);
+      } else {
+        if (i === model.moves.length - 1) return;
+        stopPlay();
+        edge(edgeR);
+        forward();
+      }
     });
 
     /* ---------- playing by itself, with or without the voice ---------- */
@@ -667,15 +842,29 @@
       else if (holder) { if (holder.parentNode) holder.parentNode.replaceChild(el, holder); else el.remove(); holder = null; }
       el.classList.toggle('full', on);
       document.body.classList.toggle('tut-full', on);
+      // full screen covers the page, so it is a dialog: focus stays inside until it is closed
+      el.setAttribute('role', on ? 'dialog' : 'region');
+      if (on) el.setAttribute('aria-modal', 'true'); else el.removeAttribute('aria-modal');
       if (on) { active = api; el.focus({ preventScroll: true }); }
-      tools();
       render(false);
+      controls();
     }
     el.addEventListener('keydown', (e) => {
-      if (e.target.closest && e.target.closest('input, select, textarea')) return;
+      if (e.key === 'Escape') {
+        if (sheetKind) { e.preventDefault(); sheet(''); } else if (el.classList.contains('full')) { e.preventDefault(); setFull(false); }
+        return;
+      }
+      if (e.key === 'Tab' && el.classList.contains('full')) {
+        const f = [...el.querySelectorAll('button, [tabindex="0"]')].filter((x) => !x.disabled && x.offsetParent !== null && !x.closest('[hidden]'));
+        const first = f[0], last = f[f.length - 1];
+        if (!first) return;
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === el)) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        return;
+      }
+      if (e.target.closest && e.target.closest('input, select, textarea, .tut-sheet')) return;
       if (e.key === 'ArrowRight' || (e.key === ' ' && e.target === el)) { e.preventDefault(); stopPlay(); forward(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); stopPlay(); go(i - 1, false); }
-      else if (e.key === 'Escape' && el.classList.contains('full')) setFull(false);
     });
     const api = {
       stop() { stopPlay(); if (synth) synth.cancel(); if (el.classList.contains('full')) setFull(false); },
