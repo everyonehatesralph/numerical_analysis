@@ -14,6 +14,7 @@ function app(storage) {
   ctx.addEventListener = () => {};
   load('src/js/tutor.js');
   load('src/js/problem.js');
+  load('src/js/rcode.js');
   return ctx;
 }
 
@@ -236,6 +237,22 @@ test('arrows go around the writing and point straight at the new piece', () => {
   const a1 = route({ w: 390, h: 600, src: box(60, 40, 80, 60), dst: box(180, 300, 220, 322), used });
   const a2 = route({ w: 390, h: 600, src: box(320, 40, 340, 60), dst: box(180, 300, 220, 322), used });
   assert.notDeepStrictEqual(Array.from(ends(a1).tip), Array.from(ends(a2).tip), 'two heads on one spot');
+});
+
+/* the R code page: R's own print-out, the table maths, and the instructor's code kept word for word */
+test('the R page prints numbers exactly the way R does', () => {
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, 'r-print.json'), 'utf8'));
+  fx.cases.forEach((c) => assert.strictEqual(NM.UI.rPrint(c.vals), c.out, 'R prints ' + c.expr + ' as\n' + c.out));
+});
+test('the R page works out the same table as the instructor\'s functions', () => {
+  const R = NM.rcode, top = (x, y) => Array.from(R.ddTable(x, y), (row, i) => row[i]);
+  assert.strictEqual(NM.UI.rPrint(top([0, 2, 3], [1, 2, 4])), R.DIVIDED.out);
+  assert.strictEqual(NM.UI.rPrint(top([0, 2, 3, 1], [1, 2, 4, 0])), R.FOUR.out);
+  assert.strictEqual(NM.UI.rPrint(top([0, 2, 3, 1, 4], [1, 2, 4, 0, 2])), R.FIVE.out);
+  assert.strictEqual(NM.UI.rPrint(top([40, 50, 60], [75, 63, 54])), '[1] 75.000 -1.200  0.015', 'the fan problem');
+  // his code, word for word (the photo of the board)
+  assert.strictEqual(R.DIVIDED.lines.map((l) => l[0]).join('\n'), 'x<-c(0,1)\ny<-c(2,2)\nz<-c(3,4)\ndivided_diff<-function(x,y,z){\n  a=(y[2]-x[2])/(y[1]-x[1])\n  b=(z[2]-y[2])/(z[1]-y[1])\n  c=(b-a)/(z[1]-x[1])\nreturn(c(x[2],a,c))}');
+  assert.strictEqual(R.FOUR.lines.map((l) => l[0]).join('\n'), 'x<-c(0,2,3,1)\ny<-c(1,2,4,0)\nfour_points<-function(x,y){\n  a=(y[2]-y[1])/(x[2]-x[1])\n  b=(y[3]-y[2])/(x[3]-x[2])\n  c=(y[4]-y[3])/(x[4]-x[3])\n  d=(b-a)/(x[3]-x[1])\n  e=(c-b)/(x[4]-x[2])\n  f=(e-d)/(x[4]-x[1])\nreturn(c(y[1],a,d,f))}');
 });
 
 console.log(checks + ' semifinal checks passed (book examples, 600 random solutions, settings update).');

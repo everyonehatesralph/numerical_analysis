@@ -35,7 +35,7 @@
       (NM.EXPLAIN[t.id] || []).forEach((it, k) => INDEX.push({ kind: 'In depth', label: UI.plain(it.q), sub: t.title, href: '#/t/' + t.id + '/explain', open: 'q-' + t.id + '-' + (k + 1), text: (UI.plain(it.q) + ' ' + t.title + ' ' + t.short).toLowerCase() }));
       (t.examples || []).forEach((ex) => INDEX.push({ kind: 'Example', label: UI.plain(ex.title), sub: t.title + (ex.src ? ' · ' + ex.src : ''), href: '#/t/' + t.id + '/examples', text: (UI.plain(ex.title) + ' ' + (ex.src || '') + ' ' + t.title).toLowerCase() }));
     });
-    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/check', 'Check my work (photo)'], ['#/mistakes', 'Review mistakes'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study']].forEach(([href, label]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: label.toLowerCase() }));
+    [['#/formulas', 'Formula sheet'], ['#/drill', 'Exam drill'], ['#/check', 'Check my work (photo)'], ['#/mistakes', 'Review mistakes'], ['#/tips', 'Calculator & exam tips'], ['#/plan', 'How to study'], ['#/rcode', 'R code: divided differences', 'r code rstudio programming coding lab four_points divided_diff newton lagrange']].forEach(([href, label, more]) => INDEX.push({ kind: 'Page', label, sub: '', href, text: (label + ' ' + (more || '')).toLowerCase() }));
   }
   function searchBox() {
     const input = h('input', { type: 'search', id: 'site-search', placeholder: 'Search topics and questions', autocomplete: 'off', 'aria-label': 'Search topics and questions' });
@@ -105,6 +105,7 @@
     nav.appendChild(navLink('#/check', 'Check my work'));
     nav.appendChild(navLink('#/mistakes', 'Review mistakes'));
     nav.appendChild(navLink('#/tips', 'Calculator & exam tips'));
+    nav.appendChild(navLink('#/rcode', 'R code (coding test)'));
     nav.appendChild(navLink('#/settings', 'Settings'));
     return nav;
   }
@@ -181,7 +182,11 @@
     } else if (tab === 'practice') UI.practice(body, t, practiceMode);
     else if (tab === 'examples') UI.examples(body, t);
     else if (tab === 'explain') UI.faq(body, NM.EXPLAIN[t.id] || [], t.id);
-    else UI.lessons(body, t);
+    else {
+      // the two topics the R coding test is about point to the R code page
+      if (t.id === 'ndd' || t.id === 'lagrange') body.appendChild(h('a', { class: 'rc-link', href: '#/rcode' }, h('b', { text: 'R code for the coding test' }), h('span', { text: 'Your instructor’s functions, line by line →' })));
+      UI.lessons(body, t);
+    }
     el.appendChild(h('div', { class: 'row spread', style: { marginTop: '28px' } },
       prev ? h('a', { class: 'btn ghost', href: '#/t/' + prev.id + '/learn' }, '← ' + prev.title) : h('span'),
       next ? h('a', { class: 'btn ghost', href: '#/t/' + next.id + '/learn' }, next.title + ' →') : h('span')));
@@ -206,7 +211,7 @@
       } else {
         const name = parts[0] || 'home';
         const page = NM.pages[name] || NM.pages.home;
-        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', mistakes: 'Review mistakes', check: 'Check my work', tips: 'Calculator & exam tips', settings: 'Settings' };
+        const names = { home: 'Numerical Methods Reviewer', plan: 'How to study', formulas: 'Formula sheet', drill: 'Exam drill', mistakes: 'Review mistakes', check: 'Check my work', tips: 'Calculator & exam tips', settings: 'Settings', rcode: 'R code' };
         crumbs.innerHTML = '<b>' + (names[name] || names.home) + '</b>';
         document.title = 'Numerical Methods Reviewer';
         page(content, crumbs, parts.slice(1));
